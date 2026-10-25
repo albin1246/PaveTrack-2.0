@@ -60,6 +60,20 @@ service cloud.firestore {
       && (!('invoicedAt' in request.resource.data) || request.resource.data.invoicedAt == null)
       && (!('invoicedBy' in request.resource.data) || request.resource.data.invoicedBy == '')
       && validJob(request.resource.data,cid);
+    // Separat och enkel fakturauppdatering: fungerar även på äldre jobb.
+    // Endast admin i DETTA företag, endast fakturafält + ändringsmetadata.
+    allow update: if admin(cid)
+      && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'invoiced','invoicedAt','invoicedBy','updatedAt','updatedBy'
+      ])
+      && request.resource.data.invoiced is bool
+      && request.resource.data.updatedAt == request.time
+      && request.resource.data.updatedBy == request.auth.uid
+      && (request.resource.data.invoiced
+        ? (request.resource.data.invoicedAt == request.time
+           && request.resource.data.invoicedBy == request.auth.uid)
+        : (request.resource.data.invoicedAt == null
+           && request.resource.data.invoicedBy == ''));
     allow update: if active(cid)
       && (admin(cid) || resource.data.ownerUid == request.auth.uid)
       && request.resource.data.ownerUid == resource.data.ownerUid
