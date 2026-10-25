@@ -23,3 +23,7 @@ Gratisläge gäller som standard. Att ändra `billingEnabled` innebär inte att 
 
 
 Ny version: originalbilden av Vögele 1303 används i sidhuvudet och appikonerna. Ingen Firebase-ändring krävs. Ladda upp filerna i GitHub-repositoryts rot, ersätt befintliga filer och uppdatera webbläsaren med Ctrl+F5.
+
+
+### Logotyp och mobilanpassning
+Den här versionen har en transparent Vögele 1303-logga bredvid PAVETRACK-texten. Ladda upp samtliga filer i ZIP-paketet till roten av samma GitHub-repository och ersätt befintliga filer med samma namn. Ändra inte Firebase-projekt eller Firestore-regler vid enbart denna designuppdatering.

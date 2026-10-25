@@ -40,3 +40,14 @@ header{max-width:1100px;min-height:0;padding:0 12px;gap:8px;background:#092d22;o
 .brand{flex:1;min-width:0;max-width:100%}.approved-brand{display:block;width:100%;max-width:980px;height:auto;object-fit:contain}
 .header-actions{flex-shrink:0}
 @media(max-width:650px){header{padding:0 4px;min-height:0}.approved-brand{width:100%;height:auto}.header-actions button{font-size:12px;padding:6px}}
+
+/* Compact brand lockup – transparent Voegele and responsive typography */
+header{background:transparent;max-width:1100px;min-height:0;padding:10px 18px;gap:12px;overflow:visible}
+.brand{flex:1;display:flex;align-items:center;gap:12px;min-width:0;max-width:none;letter-spacing:normal}
+.brand-machine{display:block;width:clamp(100px,15vw,164px);max-height:110px;object-fit:contain;flex-shrink:0;background:transparent;border:0;border-radius:0;filter:drop-shadow(0 5px 7px #0006)}
+.brand-copy{min-width:0}.brand-copy strong{display:block;font-size:clamp(25px,3.8vw,46px);font-weight:950;font-style:italic;line-height:1;letter-spacing:-1.4px;white-space:nowrap}
+.brand-pave{color:#f1f6f3}.brand-track{color:#50e676}.brand-copy small{display:block;margin-top:7px;font-size:clamp(8px,.9vw,11px);letter-spacing:1px;color:#d3dfd8;white-space:normal}.brand-copy small span{color:#50e676}
+.approved-brand{display:none}.header-actions{flex-shrink:0}
+main{margin-top:12px}#auth{margin:16px auto 26px}
+@media(max-width:650px){header{padding:8px 10px;gap:5px}.brand{gap:6px}.brand-machine{width:clamp(74px,23vw,115px);max-height:85px}.brand-copy strong{font-size:clamp(19px,5.1vw,30px);letter-spacing:-.6px}.brand-copy small{font-size:clamp(6px,1.5vw,9px);letter-spacing:0;margin-top:4px}.header-actions button{font-size:11px;padding:7px 6px}main{margin-top:8px}#auth{margin:10px auto 20px}}
+@media(max-width:380px){.brand-machine{width:68px}.brand-copy strong{font-size:18px}.brand-copy small{font-size:6px}}
