@@ -20,3 +20,6 @@ Firebase-projekt: `pavetrack-f60e1`. Originalappen ska inte ändras.
 
 ## Betalningar
 Gratisläge gäller som standard. Att ändra `billingEnabled` innebär inte att betalning sker eller att åtkomst spärras; betalningsintegration och serverkontroller måste utvecklas innan lansering.
+
+
+Ny version: originalbilden av Vögele 1303 används i sidhuvudet och appikonerna. Ingen Firebase-ändring krävs. Ladda upp filerna i GitHub-repositoryts rot, ersätt befintliga filer och uppdatera webbläsaren med Ctrl+F5.
