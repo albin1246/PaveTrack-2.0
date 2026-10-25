@@ -104,7 +104,10 @@ async function resolveInviteCode(raw){
 async function finishEmployeeJoin(user,rawCode){
  const cid=await resolveInviteCode(rawCode);
  const rootRef=doc(db,'users',user.uid), memberRef=doc(companyUsers(cid),user.uid);
- const [root,member]=await Promise.all([getDoc(rootRef),getDoc(memberRef)]);
+ // Firestore tillåter inte läsning av företagsmedlemskapet innan
+ // användarens rotprofil finns och anger rätt companyId.
+ const root=await getDoc(rootRef);
+ const member=root.exists()?await getDoc(memberRef):{exists:()=>false};
  if(root.exists() && root.data().companyId!==cid)throw Error('Kontot är redan kopplat till ett annat företag. Kontakta administratören.');
  if(member.exists() && root.exists())return;
  const name=(root.exists()?root.data().name:user.displayName||'').trim();
