@@ -1,0 +1,1 @@
+Systemägaren ska alltid kunna öppna plattformsdelen även om arbetsprofilen är pending, saknas eller medlemsläsning misslyckas. Arbetsläget kräver fortfarande godkänt företag och medlemskap. Ändrar inte Firestore-regler eller data.

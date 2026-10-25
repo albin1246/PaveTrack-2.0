@@ -91,10 +91,29 @@ function setOwnerMode(work){
 }
 async function loadProfile(){
  if(!me)return;
- const snap=await getDoc(doc(db,'users',me.uid));
- profile=snap.exists()?snap.data():null;
- if(profile?.companyId){const membership=await getDoc(doc(companyUsers(profile.companyId),me.uid));if(membership.exists())profile={...profile,...membership.data()};else profile={...profile,status:'pending'};}
- if(!profile&&platformOwner())profile={name:me.displayName||me.email,role:'platformOwner',status:'approved',companyId:null};
+ const isOwner=platformOwner();
+ let profileReadError=null;
+ try {
+  const snap=await getDoc(doc(db,'users',me.uid));
+  profile=snap.exists()?snap.data():null;
+ } catch(err) {
+  if(!isOwner)throw err;
+  profileReadError=err;
+  console.warn('Systemägare: profil kunde inte läsas',err);
+ }
+ if(profile?.companyId){
+  try {
+   const membership=await getDoc(doc(companyUsers(profile.companyId),me.uid));
+   if(membership.exists())profile={...profile,...membership.data()};
+   else profile={...profile,status:'pending'};
+  } catch(err) {
+   if(!isOwner)throw err;
+   profileReadError=err;
+   console.warn('Systemägare: företagsmedlemskap kunde inte läsas',err);
+   profile={...profile,status:'pending'};
+  }
+ }
+ if(!profile&&isOwner)profile={name:me.displayName||me.email,role:'platformOwner',status:'approved',companyId:null};
  if(!profile){page('pending');$('pendingName').textContent=tr('Profil saknas. Kontakta administratören.');return}
  let companyApproved=false;
  if(profile.companyId){try{const company=await getDoc(companyRef(profile.companyId));companyApproved=company.exists()&&company.data().status==='approved';}catch(err){if(!platformOwner())throw err;console.warn('Work membership check:',err);}}
@@ -105,6 +124,7 @@ async function loadProfile(){
  show('companiesNav',platformOwner());show('usersNav',!!tenantId()&&companyApproved&&profile.status==='approved');show('teamAdmin',isAdmin());
  if(platformOwner()){
   listenCompanies();listenBilling();
+  if(profileReadError)toast('Systemägarläge öppnat. Arbetsprofilen kunde inte läsas: '+profileReadError.code);
   if(!ownerWorkAvailable)ownerWorkMode=false;
   setOwnerMode(ownerWorkMode);
  }else{
@@ -117,7 +137,7 @@ async function loadProfile(){
 $('ownerPlatformButton').onclick=()=>setOwnerMode(false);
 $('ownerWorkButton').onclick=()=>setOwnerMode(true);
 
-function init(){if(!window.PAVETRACK_FIREBASE_CONFIG?.apiKey||!window.PAVETRACK_FIREBASE_CONFIG?.projectId){page('config');return}try{const app=initializeApp(window.PAVETRACK_FIREBASE_CONFIG);auth=getAuth(app);db=getFirestore(app);functionsClient=getFunctions(app,'europe-west1');onAuthStateChanged(auth,async user=>{resetSubs();me=user;profile=null;if(!user){page('auth');return}try{await loadProfile()}catch(e){page('pending');$('pendingName').textContent=tr('Kunde inte läsa kontot: ')+e.message}})}catch(e){page('config');$('config').innerHTML='<h2>Fel i Firebase-konfigurationen</h2><p>'+esc(e.message)+'</p>'}}
+function init(){if(!window.PAVETRACK_FIREBASE_CONFIG?.apiKey||!window.PAVETRACK_FIREBASE_CONFIG?.projectId){page('config');return}try{const app=initializeApp(window.PAVETRACK_FIREBASE_CONFIG);auth=getAuth(app);db=getFirestore(app);functionsClient=getFunctions(app,'europe-west1');onAuthStateChanged(auth,async user=>{resetSubs();me=user;profile=null;if(!user){page('auth');return}try{await loadProfile()}catch(e){if(platformOwner()){console.error('Systemägarläge kunde inte starta:',e);page('dashboard');$('pendingName').textContent='';$('greeting').textContent='HEJ, SYSTEMÄGARE';show('ownerModeSwitch');setOwnerMode(false);listenCompanies();toast('Kontrollera anslutningen: '+e.message)}else{page('pending');$('pendingName').textContent=tr('Kunde inte läsa kontot: ')+e.message}}})}catch(e){page('config');$('config').innerHTML='<h2>Fel i Firebase-konfigurationen</h2><p>'+esc(e.message)+'</p>'}}
 $('loginTab').onclick=()=>{mode='login';show('nameWrap',false);show('registerCompanyFields',false);$('authSubmit').textContent=tr('Logga in');$('loginTab').classList.add('active');$('registerTab').classList.remove('active');show('rememberWrap')};$('registerTab').onclick=()=>{mode='register';show('nameWrap');show('registerCompanyFields');$('authSubmit').textContent=tr('Skapa konto');$('registerTab').classList.add('active');$('loginTab').classList.remove('active');show('rememberWrap',false)};
 $('authForm').onsubmit=async e=>{e.preventDefault();$('authMessage').textContent='';const email=$('email').value.trim(),password=$('password').value;try{if(mode==='register'){
  const name=$('name').value.trim(),isFounder=$('accountType').value==='company',companyName=$('companyName').value.trim(),orgNumber=$('orgNumber').value.trim(),joinId=$('joinCompanyId').value.trim();
