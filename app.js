@@ -79,7 +79,7 @@ function setOwnerMode(work){
  if(!platformOwner())return;
  if(work&&!ownerWorkAvailable){ownerWorkMode=true;showWorkSetup();return}
  ownerWorkMode=!!work;show('workSetup',false);
- $('ownerModeSwitch').classList.remove('hidden');
+ show('ownerModeSwitch',true);
  $('ownerWorkButton').classList.toggle('active',ownerWorkMode);
  $('ownerPlatformButton').classList.toggle('active',!ownerWorkMode);
  show('companiesNav',!ownerWorkMode);
