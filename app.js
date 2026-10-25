@@ -94,6 +94,28 @@ function setOwnerMode(work){
  $('roleBadge').textContent=ownerWorkMode?(isCompanySuperadmin()?'SUPERADMIN':companyRole==='admin'?'ADMIN':'ANVÄNDARE'):'SYSTEMÄGARE';
  view(ownerWorkMode?'jobs':'companies');
 }
+async function resolveInviteCode(raw){
+ const code=raw.trim().toUpperCase();
+ if(!/^[A-Z0-9-]{3,32}$/.test(code))throw Error('Ange en giltig inbjudningskod.');
+ const snap=await getDoc(inviteRef(code));
+ if(!snap.exists()||typeof snap.data().companyId!=='string')throw Error('Inbjudningskoden finns inte. Be administratören kontrollera koden.');
+ return snap.data().companyId;
+}
+async function finishEmployeeJoin(user,rawCode){
+ const cid=await resolveInviteCode(rawCode);
+ const rootRef=doc(db,'users',user.uid), memberRef=doc(companyUsers(cid),user.uid);
+ const [root,member]=await Promise.all([getDoc(rootRef),getDoc(memberRef)]);
+ if(root.exists() && root.data().companyId!==cid)throw Error('Kontot är redan kopplat till ett annat företag. Kontakta administratören.');
+ if(member.exists() && root.exists())return;
+ const name=(root.exists()?root.data().name:user.displayName||'').trim();
+ if(!name||name.length>120)throw Error('Ditt konto saknar namn. Kontakta administratören.');
+ const email=user.email;
+ if(!email)throw Error('Kontot saknar e-postadress.');
+ const batch=writeBatch(db);
+ if(!root.exists())batch.set(rootRef,{name,email,companyId:cid,role:'user',status:'pending',createdAt:serverTimestamp()});
+ if(!member.exists())batch.set(memberRef,{name,email,role:'user',status:'pending',teamId:'',createdAt:serverTimestamp()});
+ await batch.commit();
+}
 async function loadProfile(){
  if(!me)return;
  companyRole=null;verifiedOwnCompany=false;
@@ -130,7 +152,7 @@ async function loadProfile(){
   }
  }
  if(!profile&&isOwner)profile={name:me.displayName||me.email,role:'platformOwner',status:'approved',companyId:null};
- if(!profile){page('pending');$('pendingName').textContent=tr('Profil saknas. Kontakta administratören.');return}
+ if(!profile){page('pending');$('pendingName').textContent='Din inloggning finns, men företagsanslutningen saknas. Ange inbjudningskoden nedan.';show('repairJoin',!isOwner);return}show('repairJoin',false);
  let companyApproved=false;
  if(profile.companyId){try{const company=await getDoc(companyRef(profile.companyId));companyApproved=company.exists()&&company.data().status==='approved';verifiedOwnCompany=companyApproved&&platformOwner()&&company.id===me.uid&&company.data().founderUid===me.uid&&companyRole==='superadmin'&&profile.status==='approved';}catch(err){if(!platformOwner())throw err;console.warn('Work membership check:',err);}}
  ownerWorkAvailable=platformOwner()&&!!tenantId()&&profile.status==='approved'&&companyApproved&&['admin','superadmin'].includes(companyRole);
@@ -156,6 +178,7 @@ async function loadProfile(){
  }
  if(tenantId()&&profile.status==='approved'&&companyApproved)listenData();
 }
+$('repairJoinForm').onsubmit=async e=>{e.preventDefault();if(!me)return;const button=$('repairSubmit');button.disabled=true;$('repairMessage').textContent='';try{await finishEmployeeJoin(me,$('repairCode').value);$('repairMessage').textContent='Anslutningen är sparad. Vänta på administratörens godkännande.';await loadProfile()}catch(err){$('repairMessage').textContent='Kunde inte ansluta: '+err.message;show('repairJoin',true)}finally{button.disabled=false}};
 $('ownerPlatformButton').onclick=()=>setOwnerMode(false);
 $('ownerWorkButton').onclick=()=>setOwnerMode(true);
 
@@ -164,12 +187,13 @@ $('loginTab').onclick=()=>{mode='login';show('nameWrap',false);show('registerCom
 $('authForm').onsubmit=async e=>{e.preventDefault();$('authMessage').textContent='';const email=$('email').value.trim(),password=$('password').value;try{if(mode==='register'){
  const name=$('name').value.trim(),isFounder=$('accountType').value==='company',companyName=$('companyName').value.trim(),orgNumber=$('orgNumber').value.trim(),joinId=$('joinCompanyId').value.trim();
  if(!name||name.length>120)throw Error('Ange ett namn (högst 120 tecken).');if(isFounder&&(!companyName||!orgNumber))throw Error('Ange företagsnamn och organisationsnummer.');if(!isFounder&&!joinId)throw Error('Ange företags-ID.');
- const cred=await createUserWithEmailAndPassword(auth,email,password);await updateProfile(cred.user,{displayName:name});let cid=joinId;if(!isFounder&&/^[A-Z0-9-]{3,32}$/.test(joinId.toUpperCase())){const alias=await getDoc(inviteRef(joinId.toUpperCase()));if(alias.exists())cid=alias.data().companyId;}if(isFounder)cid=cred.user.uid;
+ const cidFromInvite=isFounder?null:await resolveInviteCode(joinId);const cred=await createUserWithEmailAndPassword(auth,email,password);await updateProfile(cred.user,{displayName:name});let cid=isFounder?cred.user.uid:cidFromInvite;
  const batch=writeBatch(db);if(isFounder)batch.set(companyRef(cid),{name:companyName,orgNumber,founderUid:cred.user.uid,status:'pending',plan:'start',billingExempt:false,subscriptionStatus:'not_required',trialDays:30,createdAt:serverTimestamp()});
  batch.set(doc(db,'users',cred.user.uid),{name,email,companyId:cid,role:isFounder?'superadmin':'user',status:'pending',createdAt:serverTimestamp()});
  batch.set(doc(companyUsers(cid),cred.user.uid),{name,email,role:isFounder?'superadmin':'user',status:'pending',teamId:'',createdAt:serverTimestamp()});
  await batch.commit();await loadProfile();
  }else {await setPersistence(auth,$('rememberLogin').checked?browserLocalPersistence:browserSessionPersistence);await signInWithEmailAndPassword(auth,email,password)}}catch(err){$('authMessage').textContent=err.message+' Om kontot redan skapats, kontakta administratören för hjälp.'}};
+$('repairJoinForm').onsubmit=async e=>{e.preventDefault();if(!me)return;const button=$('repairSubmit');button.disabled=true;$('repairMessage').textContent='';try{await finishEmployeeJoin(me,$('repairCode').value);$('repairMessage').textContent='Anslutningen är sparad. Vänta på administratörens godkännande.';await loadProfile()}catch(err){$('repairMessage').textContent='Kunde inte ansluta: '+err.message;show('repairJoin',true)}finally{button.disabled=false}};
 $('ownerPlatformButton').onclick=()=>setOwnerMode(false);$('ownerWorkButton').onclick=()=>setOwnerMode(true);$('logout').onclick=()=>signOut(auth);$('refreshStatus').onclick=()=>loadProfile();$('jobDate').value=dateLocal();$('startTime').addEventListener('input',updateDuration);$('endTime').addEventListener('input',updateDuration);document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{if(platformOwner()&&((ownerWorkMode&&b.dataset.view==='companies')||(!ownerWorkMode&&b.dataset.view!=='companies')))return;view(b.dataset.view)});$('invoiceFilter').onchange=renderJobs;$('search').oninput=renderJobs;$('filterDate').oninput=renderJobs;$('clearFilters').onclick=()=>{$('invoiceFilter').value='all';$('search').value='';$('filterDate').value='';renderJobs()};$('cancelEdit').onclick=resetForm;
 $('jobForm').onsubmit=async e=>{e.preventDefault();if(profile?.status!=='approved')return;const selectedTeam=teams.find(t=>t.id===$('jobTeam').value);const data={teamId:selectedTeam?.id||'',teamName:selectedTeam?.name||'',asphaltType:$('asphaltType').value.trim(),date:$('jobDate').value,startTime:$('startTime').value,endTime:$('endTime').value,customer:$('customer').value.trim(),littra:$('littra').value.trim(),location:$('location').value.trim(),area:Number($('area').value),used:Number($('used').value),waste:Number($('waste').value),notes:$('notes').value.trim()};if($('jobTeam').value&&!selectedTeam){toast('Välj ett giltigt arbetslag.');return}if(!data.customer||!/^\d{4}-\d{2}-\d{2}$/.test(data.date)||![data.area,data.used,data.waste].every(n=>Number.isFinite(n)&&n>=0)){toast(tr('Kontrollera uppgifterna.'));return}const id=$('jobId').value;$('saveJob').disabled=true;try{if(id){const old=jobs.find(j=>j.id===id);if(!old)throw Error(tr('Jobbet hittades inte.'));await updateDoc(doc(companyJobs(tenantId()),id),{...data,updatedAt:serverTimestamp(),updatedBy:me.uid})}else await addDoc(companyJobs(tenantId()),{...data,ownerUid:me.uid,ownerName:profile.name||me.email,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedBy:me.uid});resetForm();toast(tr('Jobbet sparat i molnet!'))}catch(err){toast(tr('Kunde inte spara: ')+err.message)}finally{$('saveJob').disabled=false}};
 document.addEventListener('change',async e=>{const cb=e.target.closest('[data-invoice]');if(!cb)return;if(!isAdmin()){cb.checked=!cb.checked;return}cb.disabled=true;try{await updateDoc(doc(companyJobs(tenantId()),cb.dataset.invoice),{invoiced:cb.checked,invoicedAt:cb.checked?serverTimestamp():null,invoicedBy:cb.checked?me.uid:'',updatedAt:serverTimestamp(),updatedBy:me.uid});toast(cb.checked?'Jobbet markerat som fakturerat':'Faktureringen avmarkerad')}catch(err){cb.checked=!cb.checked;toast('Kunde inte uppdatera fakturastatus: '+err.message)}finally{cb.disabled=false}});
