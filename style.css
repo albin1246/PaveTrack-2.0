@@ -55,3 +55,8 @@ main{margin-top:12px}#auth{margin:16px auto 26px}
 /* Voegele 1803 – transparent machine beside live, responsive wordmark */
 .brand-machine{width:clamp(110px,17vw,195px);max-height:135px;object-fit:contain;filter:drop-shadow(0 6px 9px #0008)}
 @media(max-width:650px){.brand-machine{width:clamp(76px,24vw,118px);max-height:90px}.brand{gap:6px}}
+
+/* Keep me signed in: only shown on the login tab */
+#auth .remember-login{display:flex;align-items:center;gap:10px;margin:10px 0 15px;cursor:pointer;font-size:14px;color:#e3f2e8}
+#auth .remember-login input{width:18px;height:18px;margin:0;accent-color:#79f398;flex-shrink:0}
+#auth .remember-login.hidden{display:none}
