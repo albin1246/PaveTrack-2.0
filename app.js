@@ -47,7 +47,7 @@ document.querySelectorAll('[data-language]').forEach(b=>b.onclick=()=>setLanguag
 
 const fmt=n=>new Intl.NumberFormat('sv-SE',{maximumFractionDigits:2}).format(n||0), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateLocal=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
-let auth,db,functionsClient,me=null,profile=null,jobs=[],users=[],companies=[],teams=[],unsubs=[],mode='login',ownerWorkAvailable=false,ownerWorkMode=false;
+let auth,db,functionsClient,me=null,profile=null,jobs=[],users=[],companies=[],teams=[],unsubs=[],mode='login',ownerWorkAvailable=false,ownerWorkMode=false,companyRole=null;
 const PLATFORM_OWNER_UID=window.PAVETRACK_OWNER_UID||'';
 const platformOwner=()=>!!me&&me.uid===PLATFORM_OWNER_UID;
 const companyRef=id=>doc(db,'companies',id);
@@ -60,11 +60,11 @@ function toast(t){$('toast').textContent=t;$('toast').style.display='block';setT
 function resetSubs(){unsubs.forEach(f=>f());unsubs=[];jobs=[];users=[];companies=[];teams=[]}
 function page(id){['auth','pending','dashboard','config'].forEach(k=>show(k,k===id));show('logout',id!=='auth'&&id!=='config')}
 function view(name){document.querySelectorAll('.view').forEach(e=>e.classList.toggle('hidden',e.id!==name+'View'));document.querySelectorAll('#nav button').forEach(e=>e.classList.toggle('active',e.dataset.view===name))}
-function isAdmin(){return ['admin','superadmin'].includes(profile?.role)&&!!tenantId()}
+function isAdmin(){return ['admin','superadmin'].includes(companyRole)&&!!tenantId()}
 function resetForm(){$('jobForm').reset();$('jobId').value='';$('jobDate').value=dateLocal();$('jobTeam').value=profile?.teamId||'';$('formTitle').textContent=tr('Nytt asfaltjobb');show('cancelEdit',false)}
 function renderJob(j){const canEdit=j.ownerUid===me?.uid||isAdmin();return `<article class="job"><div class="jobhead"><div><h3>${esc(j.customer)}</h3><div class="meta">${esc(j.date)} • ${tr('Littra')}: ${esc(j.littra||'—')} ${j.location?'• '+esc(j.location):''}</div></div><span class="pill">${esc(j.ownerName||tr('Användare'))}</span></div><div class="jobnums"><span><b>${fmt(j.area)}</b> m²</span><span><b>${fmt(j.used)}</b> ${tr('ton använt')}</span><span><b>${fmt(j.waste)}</b> ${tr('ton över')}</span></div>${j.teamName?`<p><b>Arbetslag:</b> ${esc(j.teamName)}</p>`:''}${j.asphaltType?`<p><b>Asfalttyp:</b> ${esc(j.asphaltType)}</p>`:''}${j.notes?`<p>${esc(j.notes)}</p>`:''}${canEdit?`<div class="actions"><button class="smallbtn secondary" data-edit="${esc(j.id)}">${tr('Redigera')}</button><button class="smallbtn ghost" data-delete="${esc(j.id)}">${tr('Radera')}</button></div>`:''}</article>`}
 function renderJobs(){const now=dateLocal(),todays=jobs.filter(j=>j.date===now);$('todayCount').textContent=todays.length;$('todayTons').textContent=fmt(todays.reduce((s,j)=>s+j.used,0))+' ton';$('todayWaste').textContent=fmt(todays.reduce((s,j)=>s+j.waste,0))+' ton';$('recentJobs').innerHTML=jobs.slice(0,5).map(renderJob).join('')||'<p>Inga jobb registrerade ännu.</p>';const q=$('search').value.trim().toLowerCase(),d=$('filterDate').value;const filtered=jobs.filter(j=>(!d||j.date===d)&&(!q||[j.customer,j.littra,j.location,j.ownerName,j.notes,j.asphaltType,j.teamName].some(x=>String(x||'').toLowerCase().includes(q))));$('historyJobs').innerHTML=filtered.map(renderJob).join('')||'<p>Inga jobb matchar sökningen.</p>';$('allCount').textContent=jobs.length;$('allArea').textContent=fmt(jobs.reduce((s,j)=>s+j.area,0));$('allUsed').textContent=fmt(jobs.reduce((s,j)=>s+j.used,0));$('allWaste').textContent=fmt(jobs.reduce((s,j)=>s+j.waste,0));$('statsScope').textContent=isAdmin()?tr('Alla användares jobb'):tr('Dina registrerade jobb')}
-function renderUsers(){const pending=users.filter(u=>u.status==='pending');const rest=users.filter(u=>u.status!=='pending');$('usersList').innerHTML=[...pending,...rest].map(u=>{const actions=[];if(u.status==='pending'){actions.push(`<button class="smallbtn primary" data-user="${esc(u.id)}" data-status="approved">${tr('Godkänn')}</button>`,`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-status="rejected">${tr('Neka')}</button>`)}else if(u.status==='approved'&&u.id!==me.uid){actions.push(`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-status="blocked">${tr('Spärra')}</button>`);if(profile.role==='superadmin'&&u.role!=='superadmin')actions.push(`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-role="${u.role==='admin'?'user':'admin'}">${u.role==='admin'?tr('Ta bort admin'):tr('Gör till admin')}</button>`)}else if(u.status==='blocked')actions.push(`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-status="approved">${tr('Återaktivera')}</button>`);return `<article class="user"><div><h3>${esc(u.name||u.email)}</h3><div class="meta">${esc(u.email)} • ${esc(u.status)} • ${esc(u.role)}</div></div><div class="actions">${actions.join('')}</div></article>`}).join('')||'<p>Inga användare hittades.</p>'}
+function renderUsers(){const pending=users.filter(u=>u.status==='pending');const rest=users.filter(u=>u.status!=='pending');$('usersList').innerHTML=[...pending,...rest].map(u=>{const actions=[];if(u.status==='pending'){actions.push(`<button class="smallbtn primary" data-user="${esc(u.id)}" data-status="approved">${tr('Godkänn')}</button>`,`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-status="rejected">${tr('Neka')}</button>`)}else if(u.status==='approved'&&u.id!==me.uid){actions.push(`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-status="blocked">${tr('Spärra')}</button>`);if(companyRole==='superadmin'&&u.role!=='superadmin')actions.push(`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-role="${u.role==='admin'?'user':'admin'}">${u.role==='admin'?tr('Ta bort admin'):tr('Gör till admin')}</button>`)}else if(u.status==='blocked')actions.push(`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-status="approved">${tr('Återaktivera')}</button>`);return `<article class="user"><div><h3>${esc(u.name||u.email)}</h3><div class="meta">${esc(u.email)} • ${esc(u.status)} • ${esc(u.role)}</div></div><div class="actions">${actions.join('')}</div></article>`}).join('')||'<p>Inga användare hittades.</p>'}
 function listenData(){const q=isAdmin()?query(companyJobs(tenantId())):query(companyJobs(tenantId()),where('ownerUid','==',me.uid));unsubs.push(onSnapshot(q,s=>{jobs=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>b.date.localeCompare(a.date)||(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));renderJobs()},e=>toast(tr('Kunde inte läsa jobb: ')+e.message)));listenTeams();if(isAdmin())unsubs.push(onSnapshot(companyUsers(tenantId()),s=>{users=s.docs.map(d=>({id:d.id,...d.data()}));renderUsers()},e=>toast(tr('Kunde inte läsa användare: ')+e.message)))}
 function showWorkSetup(){
  $('ownerModeSwitch').classList.remove('hidden');
@@ -84,13 +84,14 @@ function setOwnerMode(work){
  $('ownerPlatformButton').classList.toggle('active',!ownerWorkMode);
  show('companiesNav',!ownerWorkMode);
  for(const id of ['jobs','history','stats'])show(id+'Nav',ownerWorkMode);
- show('usersNav',ownerWorkMode&&!!tenantId());
+ show('usersNav',ownerWorkMode&&ownerWorkAvailable&&isAdmin());
  show('teamAdmin',ownerWorkMode&&isAdmin());
- $('roleBadge').textContent=ownerWorkMode?(profile.role==='superadmin'?'SUPERADMIN':profile.role==='admin'?'ADMIN':'ANVÄNDARE'):'SYSTEMÄGARE';
+ $('roleBadge').textContent=ownerWorkMode?(companyRole==='superadmin'?'SUPERADMIN':companyRole==='admin'?'ADMIN':'ANVÄNDARE'):'SYSTEMÄGARE';
  view(ownerWorkMode?'jobs':'companies');
 }
 async function loadProfile(){
  if(!me)return;
+ companyRole=null;
  const isOwner=platformOwner();
  let profileReadError=null;
  try {
@@ -104,7 +105,7 @@ async function loadProfile(){
  if(profile?.companyId){
   try {
    const membership=await getDoc(doc(companyUsers(profile.companyId),me.uid));
-   if(membership.exists())profile={...profile,...membership.data()};
+   if(membership.exists()){companyRole=membership.data().role;profile={...profile,...membership.data()};}
    else profile={...profile,status:'pending'};
   } catch(err) {
    if(!isOwner)throw err;
@@ -121,15 +122,16 @@ async function loadProfile(){
  if(!platformOwner()&&(!companyApproved||profile.status!=='approved')){resetSubs();page('pending');$('pendingName').textContent=companyApproved?`${profile.name||me.email} • ${tr('Status: ')}${profile.status}`:'Företaget väntar på ditt godkännande eller är pausat.';return}
  page('dashboard');$('greeting').textContent=tr('HEJ, ')+(profile.name||tr('ANVÄNDARE')).toUpperCase();
  show('ownerModeSwitch',platformOwner());
- show('companiesNav',platformOwner());show('usersNav',!!tenantId()&&companyApproved&&profile.status==='approved');show('teamAdmin',isAdmin());
+ show('companiesNav',platformOwner());show('usersNav',!!tenantId()&&companyApproved&&profile.status==='approved'&&isAdmin());show('teamAdmin',isAdmin());
  if(platformOwner()){
+  if(ownerWorkAvailable && companyRole==='superadmin')$('usersNav').textContent='Företagsadmin';
   listenCompanies();listenBilling();
   if(profileReadError)toast('Systemägarläge öppnat. Arbetsprofilen kunde inte läsas: '+profileReadError.code);
   if(!ownerWorkAvailable)ownerWorkMode=false;
   setOwnerMode(ownerWorkMode);
  }else{
   for(const id of ['jobs','history','stats'])show(id+'Nav');
-  $('roleBadge').textContent=profile.role==='superadmin'?'SUPERADMIN':profile.role==='admin'?'ADMIN':'ANVÄNDARE';
+  $('roleBadge').textContent=companyRole==='superadmin'?'SUPERADMIN':companyRole==='admin'?'ADMIN':'ANVÄNDARE';
   view('jobs');
  }
  if(tenantId()&&profile.status==='approved'&&companyApproved)listenData();
