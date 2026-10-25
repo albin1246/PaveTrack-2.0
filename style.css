@@ -34,3 +34,9 @@ header{max-width:1100px;min-height:132px;padding:18px 22px}
  #auth{margin:22px auto}
 }
 @media(max-width:370px){.brand-machine{width:76px}.brand-copy strong{font-size:18px}.brand-copy small{font-size:7px}}
+
+/* Final approved brand artwork – no artificial white/rose edges */
+header{max-width:1100px;min-height:0;padding:0 12px;gap:8px;background:#092d22;overflow:hidden}
+.brand{flex:1;min-width:0;max-width:100%}.approved-brand{display:block;width:100%;max-width:980px;height:auto;object-fit:contain}
+.header-actions{flex-shrink:0}
+@media(max-width:650px){header{padding:0 4px;min-height:0}.approved-brand{width:100%;height:auto}.header-actions button{font-size:12px;padding:6px}}
