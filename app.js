@@ -114,10 +114,11 @@ async function finishEmployeeJoin(user,rawCode){
  if(!name||name.length>120)throw Error('Ditt konto saknar namn. Kontakta administratören.');
  const email=user.email;
  if(!email)throw Error('Kontot saknar e-postadress.');
+ await user.getIdToken(true);
  const batch=writeBatch(db);
  if(!root.exists())batch.set(rootRef,{name,email,companyId:cid,role:'user',status:'pending',createdAt:serverTimestamp()});
  if(!member.exists())batch.set(memberRef,{name,email,role:'user',status:'pending',teamId:'',createdAt:serverTimestamp()});
- await batch.commit();
+ try { await batch.commit(); } catch(err) { console.error('PaveTrack anslutning: batch nekades', {code:err.code, companyId:cid, uid:user.uid, rootExists:root.exists(), memberExists:member.exists()},err); throw Error('Firestore nekade företagsanslutningen ('+(err.code||'okänd kod')+'). Kontrollera att nya firestore.rules är publicerade.'); }
 }
 async function loadProfile(){
  if(!me)return;

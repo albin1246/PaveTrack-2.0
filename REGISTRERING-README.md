@@ -1,0 +1,1 @@
+PaveTrack registrering: publicera firestore.rules i Firebase Firestore Rules OCH ladda upp webbplatsens filer på GitHub Pages. Anställd loggar in och slutför med MALARDALEN. Reglerna behåller pending-godkännande och begränsar nya medlemskap till godkända företag. Inte verifierat mot live-Firebase.
