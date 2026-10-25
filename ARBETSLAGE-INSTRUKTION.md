@@ -1,0 +1,1 @@
+Systemägare / Mitt arbete: växla i toppmenyn. Arbetsläget kräver ett godkänt företagsmedlemskap på samma UID. Om kopplingen saknas visas en förklaring, men systemägarens företagslista fortsätter fungera. Ingen ändring av Firestore-regler görs.

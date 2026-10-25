@@ -61,7 +61,6 @@ main{margin-top:12px}#auth{margin:16px auto 26px}
 #auth .remember-login input{width:18px;height:18px;margin:0;accent-color:#79f398;flex-shrink:0}
 #auth .remember-login.hidden{display:none}
 
-/* Systemägare: välj plattform eller eget arbete */
 .owner-mode-switch{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 16px;padding:6px;border:1px solid #35574a;border-radius:14px;background:#10251e}
 .owner-mode-switch.hidden{display:none}
 .owner-mode-switch button{flex:1 1 145px;border-radius:10px;padding:12px 14px;border:1px solid transparent;background:transparent;color:#d6e7dc;font-weight:700;cursor:pointer}
