@@ -1,0 +1,1 @@
+Systemägare + superadmin i eget företag. Kräver att Firestore companies/{UID} har founderUid=UID och status=approved, att users/{UID} har companyId=UID, och companies/{UID}/users/{UID} har role=superadmin, status=approved. Inga Firestore-regler ändrade. Backend-regler avgör slutlig åtkomst. Publicera alla filer. Testa både systemägare och Företagsadmin.
