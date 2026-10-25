@@ -2,7 +2,7 @@ import {getFunctions,httpsCallable} from 'https://www.gstatic.com/firebasejs/11.
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js';
 import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,setPersistence,browserLocalPersistence,browserSessionPersistence,signOut,updateProfile} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import {getFirestore,doc,setDoc,getDoc,collection,query,where,onSnapshot,addDoc,updateDoc,deleteDoc,serverTimestamp,getDocs,writeBatch} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
-const $=id=>document.getElementById(id), show=(id,yes=true)=>$(id).classList.toggle('hidden',!yes);
+const $=id=>document.getElementById(id), show=(id,yes=true)=>{const el=$(id);if(el)el.classList.toggle('hidden',!yes);};
 // All visible copy is translated client-side. User-entered content remains unchanged.
 const translations={
 'ASFALT • ARBETSLOGG':'ASPHALT • WORK LOG','Logga ut':'Log out','Förbered PaveTrack':'Set up PaveTrack',
