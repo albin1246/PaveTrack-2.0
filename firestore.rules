@@ -23,6 +23,12 @@ service cloud.firestore {
    allow get: if owner() || (signed() && request.auth.uid == uid);
    allow list,update,delete: if false;
   }
+  match /inviteCodes/{code} {
+   allow get: if signed();
+   allow list: if false;
+   allow create: if signed() && code.matches('^[A-Z0-9-]{3,32}$') && request.resource.data.keys().hasOnly(['companyId','createdBy','createdAt']) && request.resource.data.companyId is string && request.resource.data.createdBy == request.auth.uid && admin(request.resource.data.companyId);
+   allow update,delete: if false;
+  }
   match /companies/{cid} {
    allow create: if signed() && cid == request.auth.uid && request.resource.data.keys().hasOnly(['name','orgNumber','founderUid','status','plan','billingExempt','subscriptionStatus','trialDays','createdAt']) && request.resource.data.founderUid == request.auth.uid && request.resource.data.status == 'pending' && request.resource.data.plan == 'start' && request.resource.data.billingExempt == false && request.resource.data.subscriptionStatus == 'not_required' && request.resource.data.trialDays == 30 && request.resource.data.name is string && request.resource.data.name.size()>0 && request.resource.data.name.size()<=150 && request.resource.data.orgNumber is string && request.resource.data.orgNumber.size()>0 && request.resource.data.orgNumber.size()<=30 && getAfter(rootPath(cid)).data.companyId == cid && initialMembership(cid,cid);
    allow get: if owner() || rootCompany(cid);
@@ -32,7 +38,7 @@ service cloud.firestore {
    match /users/{uid} {
     allow create: if signed() && uid == request.auth.uid && request.resource.data.keys().hasOnly(['name','email','role','status','teamId','createdAt']) && request.resource.data.email == request.auth.token.email && request.resource.data.name is string && request.resource.data.name.size()>0 && request.resource.data.name.size()<=120 && request.resource.data.status == 'pending' && request.resource.data.teamId == '' && request.resource.data.role == (uid == cid ? 'superadmin' : 'user') && getAfter(rootPath(uid)).data.companyId == cid && getAfter(rootPath(uid)).data.role == request.resource.data.role && (uid != cid || founderBatch(cid)) && getAfter(companyPath(cid)).data.status in ['pending','approved'];
     allow get: if owner() || (signed() && uid == request.auth.uid && rootCompany(cid)) || admin(cid);
-    allow list: if admin(cid) || owner();
+    allow list: if admin(cid);
     allow update: if (owner() && uid == get(companyPath(cid)).data.founderUid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) && request.resource.data.status in ['pending','approved'] && (request.resource.data.status != 'approved' || getAfter(companyPath(cid)).data.status == 'approved')) || (admin(cid) && uid != get(companyPath(cid)).data.founderUid && resource.data.role != 'superadmin' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','role','teamId']) && request.resource.data.status in ['pending','approved','rejected','blocked'] && request.resource.data.role in ['user','admin'] && (request.resource.data.role == resource.data.role || superadmin(cid)) && request.resource.data.teamId is string && validTeam(cid,request.resource.data.teamId)) || (active(cid) && uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamId']) && request.resource.data.teamId is string && validTeam(cid,request.resource.data.teamId));
     allow delete: if false;
    }
@@ -43,11 +49,59 @@ service cloud.firestore {
    }
    match /jobs/{jobId} {
     allow get,list: if active(cid) && (admin(cid) || resource.data.ownerUid == request.auth.uid);
-    allow create: if active(cid) && request.resource.data.ownerUid == request.auth.uid && request.resource.data.updatedBy == request.auth.uid && validJob(request.resource.data,cid);
-    allow update: if active(cid) && (admin(cid) || resource.data.ownerUid == request.auth.uid) && request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.ownerName == resource.data.ownerName && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.updatedBy == request.auth.uid && validJob(request.resource.data,cid);
+    // Nya jobb är alltid ej fakturerade. Endast administratörer får ange faktureringsstatus.
+    allow create: if active(cid)
+      && request.resource.data.ownerUid == request.auth.uid
+      && request.resource.data.ownerName == get(membershipPath(cid,request.auth.uid)).data.name
+      && request.resource.data.updatedBy == request.auth.uid
+      && request.resource.data.createdAt == request.time
+      && request.resource.data.updatedAt == request.time
+      && (!('invoiced' in request.resource.data) || request.resource.data.invoiced == false)
+      && (!('invoicedAt' in request.resource.data) || request.resource.data.invoicedAt == null)
+      && (!('invoicedBy' in request.resource.data) || request.resource.data.invoicedBy == '')
+      && validJob(request.resource.data,cid);
+    allow update: if active(cid)
+      && (admin(cid) || resource.data.ownerUid == request.auth.uid)
+      && request.resource.data.ownerUid == resource.data.ownerUid
+      && request.resource.data.ownerName == resource.data.ownerName
+      && request.resource.data.createdAt == resource.data.createdAt
+      && request.resource.data.updatedAt == request.time
+      && request.resource.data.updatedBy == request.auth.uid
+      && (admin(cid) || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['invoiced','invoicedAt','invoicedBy']))
+      && (
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['invoiced','invoicedAt','invoicedBy'])
+        || (
+          admin(cid)
+          && ('invoiced' in request.resource.data)
+          && request.resource.data.invoiced is bool
+          && ('invoicedAt' in request.resource.data)
+          && ('invoicedBy' in request.resource.data)
+          && (request.resource.data.invoiced
+            ? (request.resource.data.invoicedAt == request.time && request.resource.data.invoicedBy == request.auth.uid)
+            : (request.resource.data.invoicedAt == null && request.resource.data.invoicedBy == ''))
+        )
+      )
+      // Bevara konsekventa faktureringsuppgifter vid ALLA uppdateringar,
+      // även när någon endast redigerar övriga jobbfält.
+      && validInvoiceState(request.resource.data)
+      && validJob(request.resource.data,cid);
     allow delete: if active(cid) && (admin(cid) || resource.data.ownerUid == request.auth.uid);
    }
   }
-  function validJob(d,cid) { return d.keys().hasAll(['ownerUid','ownerName','date','customer','littra','location','area','used','waste','notes','asphaltType','teamId','teamName','createdAt','updatedAt','updatedBy']) && d.keys().hasOnly(['ownerUid','ownerName','date','customer','littra','location','area','used','waste','notes','asphaltType','teamId','teamName','createdAt','updatedAt','updatedBy']) && d.ownerUid is string && d.ownerName is string && d.date is string && d.date.size()==10 && d.customer is string && d.customer.size()>0 && d.customer.size()<=150 && d.littra is string && d.littra.size()<=80 && d.location is string && d.location.size()<=200 && d.asphaltType is string && d.asphaltType.size()<=100 && d.teamId is string && d.teamName is string && d.teamName.size()<=80 && (d.teamId == '' ? d.teamName == '' : (exists(/databases/$(database)/documents/companies/$(cid)/teams/$(d.teamId)) && get(/databases/$(database)/documents/companies/$(cid)/teams/$(d.teamId)).data.name == d.teamName)) && d.notes is string && d.notes.size()<=3000 && d.area is number && d.area>=0 && d.area<=10000000 && d.used is number && d.used>=0 && d.used<=100000 && d.waste is number && d.waste>=0 && d.waste<=100000; }
+  // Äldre jobb utan faktureringsfält räknas som ej fakturerade.
+  // Ett fakturerat jobb måste alltid ha en tidsstämpel och ett användar-ID.
+  function validInvoiceState(d) {
+    return !('invoiced' in d)
+      ? (!('invoicedAt' in d) || d.invoicedAt == null)
+        && (!('invoicedBy' in d) || d.invoicedBy == '')
+      : (d.invoiced == true
+          ? ('invoicedAt' in d) && d.invoicedAt is timestamp
+            && ('invoicedBy' in d) && d.invoicedBy is string
+            && d.invoicedBy.size() > 0
+          : d.invoiced == false
+            && (!('invoicedAt' in d) || d.invoicedAt == null)
+            && (!('invoicedBy' in d) || d.invoicedBy == ''));
+  }
+  function validJob(d,cid) { return d.keys().hasAll(['ownerUid','ownerName','date','customer','littra','location','area','used','waste','notes','asphaltType','teamId','teamName','createdAt','updatedAt','updatedBy']) && d.keys().hasOnly(['ownerUid','ownerName','date','jobTime','startTime','endTime','customer','littra','location','area','used','waste','notes','asphaltType','teamId','teamName','createdAt','updatedAt','updatedBy','invoiced','invoicedAt','invoicedBy']) && (!('invoiced' in d) || d.invoiced is bool) && (!('invoicedBy' in d) || d.invoicedBy is string) && (!('invoicedAt' in d) || d.invoicedAt == null || d.invoicedAt is timestamp) && (!('startTime' in d) || (d.startTime is string && (d.startTime == '' || d.startTime.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')))) && (!('endTime' in d) || (d.endTime is string && (d.endTime == '' || d.endTime.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')))) && d.ownerUid is string && d.ownerName is string && (!('jobTime' in d) || (d.jobTime is string && (d.jobTime == '' || d.jobTime.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$'))))&& d.date is string && d.date.size()==10 && d.customer is string && d.customer.size()>0 && d.customer.size()<=150 && d.littra is string && d.littra.size()<=80 && d.location is string && d.location.size()<=200 && d.asphaltType is string && d.asphaltType.size()<=100 && d.teamId is string && d.teamName is string && d.teamName.size()<=80 && (d.teamId == '' ? d.teamName == '' : (exists(/databases/$(database)/documents/companies/$(cid)/teams/$(d.teamId)) && get(/databases/$(database)/documents/companies/$(cid)/teams/$(d.teamId)).data.name == d.teamName)) && d.notes is string && d.notes.size()<=3000 && d.area is number && d.area>=0 && d.area<=10000000 && d.used is number && d.used>=0 && d.used<=100000 && d.waste is number && d.waste>=0 && d.waste<=100000; }
  }
 }
