@@ -191,7 +191,12 @@ $('loginTab').onclick=()=>{mode='login';show('nameWrap',false);show('registerCom
 $('authForm').onsubmit=async e=>{e.preventDefault();$('authMessage').textContent='';const email=$('email').value.trim(),password=$('password').value;try{if(mode==='register'){
  const name=$('name').value.trim(),isFounder=$('accountType').value==='company',companyName=$('companyName').value.trim(),orgNumber=$('orgNumber').value.trim(),joinId=$('joinCompanyId').value.trim();
  if(!name||name.length>120)throw Error('Ange ett namn (högst 120 tecken).');if(isFounder&&(!companyName||!orgNumber))throw Error('Ange företagsnamn och organisationsnummer.');if(!isFounder&&!joinId)throw Error('Ange företags-ID.');
- const cidFromInvite=isFounder?null:await resolveInviteCode(joinId);const cred=await createUserWithEmailAndPassword(auth,email,password);await updateProfile(cred.user,{displayName:name});let cid=isFounder?cred.user.uid:cidFromInvite;
+ // Skapa Auth-kontot först: Firestore-reglerna kräver inloggning för att läsa inviteCodes.
+ const cred=await createUserWithEmailAndPassword(auth,email,password);
+ await updateProfile(cred.user,{displayName:name});
+ // Om företagskoden är fel finns Auth-kontot kvar och kan anslutas via repairJoin.
+ const cidFromInvite=isFounder?null:await resolveInviteCode(joinId);
+ let cid=isFounder?cred.user.uid:cidFromInvite;
  const batch=writeBatch(db);if(isFounder)batch.set(companyRef(cid),{name:companyName,orgNumber,founderUid:cred.user.uid,status:'pending',plan:'start',billingExempt:false,subscriptionStatus:'not_required',trialDays:30,createdAt:serverTimestamp()});
  batch.set(doc(db,'users',cred.user.uid),{name,email,companyId:cid,role:isFounder?'superadmin':'user',status:'pending',createdAt:serverTimestamp()});
  batch.set(doc(companyUsers(cid),cred.user.uid),{name,email,role:isFounder?'superadmin':'user',status:'pending',teamId:'',createdAt:serverTimestamp()});
