@@ -51,3 +51,7 @@ header{background:transparent;max-width:1100px;min-height:0;padding:10px 18px;ga
 main{margin-top:12px}#auth{margin:16px auto 26px}
 @media(max-width:650px){header{padding:8px 10px;gap:5px}.brand{gap:6px}.brand-machine{width:clamp(74px,23vw,115px);max-height:85px}.brand-copy strong{font-size:clamp(19px,5.1vw,30px);letter-spacing:-.6px}.brand-copy small{font-size:clamp(6px,1.5vw,9px);letter-spacing:0;margin-top:4px}.header-actions button{font-size:11px;padding:7px 6px}main{margin-top:8px}#auth{margin:10px auto 20px}}
 @media(max-width:380px){.brand-machine{width:68px}.brand-copy strong{font-size:18px}.brand-copy small{font-size:6px}}
+
+/* Voegele 1803 – transparent machine beside live, responsive wordmark */
+.brand-machine{width:clamp(110px,17vw,195px);max-height:135px;object-fit:contain;filter:drop-shadow(0 6px 9px #0008)}
+@media(max-width:650px){.brand-machine{width:clamp(76px,24vw,118px);max-height:90px}.brand{gap:6px}}
