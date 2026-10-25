@@ -103,11 +103,21 @@ async function loadProfile(){
   profileReadError=err;
   console.warn('Systemägare: profil kunde inte läsas',err);
  }
+ // Systemägaren kan även återfinna sitt eget företag via grundarens UID.
+ // Detta ger inte åtkomst utan godkänt företag OCH godkänt medlemskap.
+ if(isOwner && !profile?.companyId){
+  try {
+   const own=await getDoc(companyRef(me.uid));
+   if(own.exists() && own.data().founderUid===me.uid){
+    profile={...(profile||{name:me.displayName||me.email,role:'platformOwner',status:'approved'}),companyId:me.uid};
+   }
+  }catch(err){console.warn('Kunde inte hitta eget företag',err);}
+ }
  if(profile?.companyId){
   try {
    const membership=await getDoc(doc(companyUsers(profile.companyId),me.uid));
    if(membership.exists()){companyRole=membership.data().role;profile={...profile,...membership.data()};}
-   else profile={...profile,status:'pending'};
+   else {profile={...profile,status:'pending'};console.warn('Företagsmedlemskap saknas för',profile.companyId);}
   } catch(err) {
    if(!isOwner)throw err;
    profileReadError=err;
@@ -119,7 +129,12 @@ async function loadProfile(){
  if(!profile){page('pending');$('pendingName').textContent=tr('Profil saknas. Kontakta administratören.');return}
  let companyApproved=false;
  if(profile.companyId){try{const company=await getDoc(companyRef(profile.companyId));companyApproved=company.exists()&&company.data().status==='approved';verifiedOwnCompany=companyApproved&&platformOwner()&&company.id===me.uid&&company.data().founderUid===me.uid&&companyRole==='superadmin'&&profile.status==='approved';}catch(err){if(!platformOwner())throw err;console.warn('Work membership check:',err);}}
- ownerWorkAvailable=platformOwner()&&!!tenantId()&&profile.status==='approved'&&companyApproved;
+ ownerWorkAvailable=platformOwner()&&!!tenantId()&&profile.status==='approved'&&companyApproved&&['admin','superadmin'].includes(companyRole);
+ if(isOwner && !ownerWorkAvailable){
+  console.warn('Arbetsläge saknar behörighet',{companyId:tenantId(),companyRole,profileStatus:profile.status,companyApproved,profileReadError:profileReadError?.code});
+  const hint=[!tenantId()?'företagskoppling saknas':null,!companyApproved?'företaget kunde inte verifieras som godkänt':null,profile.status!=='approved'?'medlemsstatus: '+profile.status:null,!['admin','superadmin'].includes(companyRole)?'företagsroll kunde inte verifieras':null,profileReadError?'läsfel: '+profileReadError.code:null].filter(Boolean).join(' • ');
+  $('workSetup').querySelector('p').textContent='PaveTrack kunde inte verifiera din företagsbehörighet: '+hint+'. Kontrollera att du använder rätt Firebase-projekt. Ingen data har ändrats.';
+ }
  if(!platformOwner()&&(!companyApproved||profile.status!=='approved')){resetSubs();page('pending');$('pendingName').textContent=companyApproved?`${profile.name||me.email} • ${tr('Status: ')}${profile.status}`:'Företaget väntar på ditt godkännande eller är pausat.';return}
  page('dashboard');$('greeting').textContent=tr('HEJ, ')+(profile.name||tr('ANVÄNDARE')).toUpperCase();
  show('ownerModeSwitch',platformOwner());
