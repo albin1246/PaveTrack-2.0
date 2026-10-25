@@ -9,3 +9,28 @@
 
 /* Originalfoto av Vögele 1303, tydligt synlig i sidhuvudet */
 .brand{display:flex;align-items:center;gap:16px;min-width:0}.brand-machine{display:block;width:clamp(150px,24vw,270px);height:auto;object-fit:contain;background:#fff;border-radius:12px}.brand-copy strong{font-size:clamp(22px,3vw,38px);font-weight:900;letter-spacing:1px;color:#f4fff5}.brand-copy small{font-size:clamp(9px,1.2vw,12px);color:#7fdc91;letter-spacing:1.5px}.brand-banner{display:none}header{min-height:140px}@media(max-width:600px){.brand{gap:9px}.brand-machine{width:clamp(118px,34vw,175px)}.brand-copy strong{font-size:clamp(16px,4.8vw,24px)}.brand-copy small{font-size:9px;letter-spacing:.5px}header{min-height:95px}}
+
+
+/* PaveTrack 2.0 – approved clean header and mobile-friendly login */
+header{max-width:1100px;min-height:132px;padding:18px 22px}
+.brand{gap:14px;letter-spacing:normal;min-width:0}
+.brand-machine{width:clamp(145px,22vw,245px);height:auto;max-height:132px;object-fit:contain;background:transparent;border:0;border-radius:0;filter:drop-shadow(0 9px 11px #0007)}
+.brand-copy{min-width:0}
+.brand-copy strong{font-size:clamp(27px,4.5vw,57px);font-weight:950;font-style:italic;letter-spacing:-1.8px;line-height:1.03;white-space:nowrap}
+.brand-pave{color:#f1f6f3}.brand-track{color:#50e676}
+.brand-copy small{font-size:clamp(9px,1.15vw,13px);letter-spacing:2px;color:#d3dfd8;white-space:nowrap;margin-top:9px}
+.brand-copy small span{color:#50e676}
+#auth{max-width:500px;margin:36px auto;background:linear-gradient(145deg,#18392c,#12271f);border:1px solid #386e4d;box-shadow:0 20px 65px #0004}
+#auth .primary,#auth .tabs button.active{background:#79f398;color:#092317}
+#auth input{border-color:#4b9c6c;background:#10271e}
+#auth input:focus{border-color:#7af39a;box-shadow:0 0 0 2px #7af39a33}
+@media(max-width:650px){
+ header{min-height:94px;padding:12px 10px;gap:6px}
+ .brand{gap:6px}
+ .brand-machine{width:clamp(85px,27vw,155px);max-height:94px}
+ .brand-copy strong{font-size:clamp(19px,5vw,31px);letter-spacing:-.8px}
+ .brand-copy small{font-size:clamp(7px,1.7vw,10px);letter-spacing:.15px;white-space:normal;margin-top:4px}
+ .header-actions button{padding:7px}
+ #auth{margin:22px auto}
+}
+@media(max-width:370px){.brand-machine{width:76px}.brand-copy strong{font-size:18px}.brand-copy small{font-size:7px}}
