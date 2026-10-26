@@ -10,7 +10,7 @@ const translations={
 'Välkommen till PaveTrack':'Welcome to PaveTrack','Logga in eller skapa ett konto. Nya konton måste godkännas.':'Sign in or create an account. New accounts must be approved.',
 'Logga in':'Sign in','Skapa konto':'Create account','Namn':'Name','E-post':'Email','Lösenord':'Password',
 'Kontot väntar på godkännande':'Account awaiting approval','En administratör behöver godkänna ditt konto innan du kan registrera jobb.':'An administrator must approve your account before you can register jobs.',
-'Kontrollera status':'Check status','Arbetsöversikt':'Work overview','Jobb':'Jobs','Historik':'History','Statistik':'Statistics','Användare':'Users',
+'Kontrollera status':'Check status','Arbetsöversikt':'Work overview','Jobb':'Jobs','Historik':'History','Statistik':'Statistics','Användare':'Users','Egenkontroll':'Self-inspection',
 'Jobb idag':'Jobs today','Använt idag':'Used today','Överblivet idag':'Left over today','Nytt asfaltjobb':'New asphalt job',
 'AUTOSPARAS I MOLNET':'SAVED TO THE CLOUD','Datum':'Date','Kund / beställare':'Customer / client','Littranummer':'Job reference number',
 '(valfritt)':'(optional)','Arbetsplats':'Work site','Yta (m²)':'Area (m²)','Använd asfalt (ton)':'Asphalt used (tons)',
@@ -104,7 +104,7 @@ function listenData(){const q=isAdmin()?query(companyJobs(tenantId())):query(com
 function showWorkSetup(){
  $('ownerModeSwitch').classList.remove('hidden');
  $('ownerWorkButton').classList.add('active');$('ownerPlatformButton').classList.remove('active');
- show('companiesNav',false);for(const id of ['jobs','history','stats'])show(id+'Nav',false);show('usersNav',false);
+ show('companiesNav',false);for(const id of ['jobs','history','stats','egenkontroll'])show(id+'Nav',false);show('usersNav',false);
  $('roleBadge').textContent='ARBETSLÄGE';
  view('jobs');
  $('jobsView').classList.remove('hidden');
@@ -118,7 +118,7 @@ function setOwnerMode(work){
  $('ownerWorkButton').classList.toggle('active',ownerWorkMode);
  $('ownerPlatformButton').classList.toggle('active',!ownerWorkMode);
  show('companiesNav',!ownerWorkMode);
- for(const id of ['jobs','history','stats'])show(id+'Nav',ownerWorkMode);
+ for(const id of ['jobs','history','stats','egenkontroll'])show(id+'Nav',ownerWorkMode);
  show('usersNav',ownerWorkMode&&ownerWorkAvailable&&isAdmin());
  show('teamAdmin',ownerWorkMode&&isAdmin());
  $('roleBadge').textContent=ownerWorkMode?(isCompanySuperadmin()?'SUPERADMIN':companyRole==='admin'?'ADMIN':'ANVÄNDARE'):'SYSTEMÄGARE';
@@ -196,7 +196,7 @@ async function loadProfile(){
   $('workSetup').querySelector('p').textContent='PaveTrack kunde inte verifiera din företagsbehörighet: '+hint+'. Kontrollera att du använder rätt Firebase-projekt. Ingen data har ändrats.';
  }
  if(!platformOwner()&&(!companyApproved||profile.status!=='approved')){resetSubs();page('pending');$('pendingName').textContent=companyApproved?`${profile.name||me.email} • ${tr('Status: ')}${profile.status}`:'Företaget väntar på ditt godkännande eller är pausat.';return}
- page('dashboard');$('greeting').textContent=tr('HEJ, ')+(profile.name||tr('ANVÄNDARE')).toUpperCase();
+ page('dashboard');egenActiveId=null;egenFill();egenRenderList();$('greeting').textContent=tr('HEJ, ')+(profile.name||tr('ANVÄNDARE')).toUpperCase();
  show('ownerModeSwitch',platformOwner());
  show('companiesNav',platformOwner());show('usersNav',!!tenantId()&&companyApproved&&profile.status==='approved'&&isAdmin());show('teamAdmin',isAdmin());
  if(platformOwner()){
@@ -206,7 +206,7 @@ async function loadProfile(){
   if(!ownerWorkAvailable)ownerWorkMode=false;
   setOwnerMode(ownerWorkMode);
  }else{
-  for(const id of ['jobs','history','stats'])show(id+'Nav');
+  for(const id of ['jobs','history','stats','egenkontroll'])show(id+'Nav');
   $('roleBadge').textContent=companyRole==='superadmin'?'SUPERADMIN':companyRole==='admin'?'ADMIN':'ANVÄNDARE';
   view('jobs');
  }
@@ -268,3 +268,62 @@ function listenTeams(){unsubs.push(onSnapshot(companyTeams(tenantId()),s=>{teams
 $('myTeam').onchange=async e=>{if(!tenantId())return;const id=e.target.value;try{await updateDoc(doc(companyUsers(tenantId()),me.uid),{teamId:id});profile.teamId=id;$('jobTeam').value=id;toast('Arbetslag sparat')}catch(err){toast('Kunde inte välja arbetslag: '+err.message)}};
 $('inviteEmployee').onclick=async()=>{if(!isAdmin())return;const code=tenantId()==='lxZFcIJuSaPAzN6dgx7hSLo5PW22'?'MALARDALEN':null;if(!code){$('inviteStatus').textContent='Inbjudningskod måste konfigureras för detta företag.';return}try{const ref=inviteRef(code),existing=await getDoc(ref);if(existing.exists()&&existing.data().companyId!==tenantId())throw Error('Koden används redan av ett annat företag.');if(!existing.exists())await setDoc(ref,{companyId:tenantId(),createdBy:me.uid,createdAt:serverTimestamp()});$('inviteStatus').textContent='Inbjudningskod: '+code+' – dela med anställda. De måste godkännas efter registrering.';try{await navigator.clipboard.writeText(code);toast('Inbjudningskoden kopierad')}catch{toast('Inbjudningskoden är '+code)}}catch(err){toast('Kunde inte skapa inbjudan: '+err.message)}};
 $('teamForm').onsubmit=async e=>{e.preventDefault();if(!isAdmin())return;const name=$('newTeamName').value.trim();if(!name||name.length>80)return;try{await addDoc(companyTeams(tenantId()),{name,createdAt:serverTimestamp(),createdBy:me.uid});$('newTeamName').value='';toast('Arbetslaget är tillagt')}catch(err){toast(err.message)}};
+
+
+// Egenkontroll – local per-company/user records, no Firebase rules required.
+// Local storage is intentionally NOT represented as cloud backup.
+const egenKey=()=>`pavetrack-egen-v1:${tenantId()||'none'}:${me?.uid||'none'}`;
+let egenActiveId=null;
+let egenLogoData='';
+function egenUpdateLogo(){const preview=$('egenLogoPreview');preview.src=egenLogoData||'';show('egenLogoPreview',!!egenLogoData);$('egenRemoveLogo').disabled=!egenLogoData;}
+$('egenChooseLogo').onclick=()=>$('egenLogoFile').click();
+$('egenRemoveLogo').onclick=()=>{egenLogoData='';$('egenLogoFile').value='';egenUpdateLogo()};
+$('egenLogoFile').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;if(!['image/png','image/jpeg','image/webp'].includes(file.type)){toast('Välj PNG, JPG eller WebP.');return}if(file.size>5*1024*1024){toast('Logotypen får vara högst 5 MB.');return}try{const url=URL.createObjectURL(file);const img=new Image();await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=url});const scale=Math.min(1,650/img.width,240/img.height);const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);egenLogoData=canvas.toDataURL('image/png');URL.revokeObjectURL(url);$('egenUseLogo').checked=true;egenUpdateLogo();toast('Logotyp infogad')}catch(err){toast('Kunde inte läsa logotyp: '+err.message)}};
+const egenRead=()=>{try{const data=JSON.parse(localStorage.getItem(egenKey())||'[]');return Array.isArray(data)?data:[]}catch{return []}};
+const egenSave=records=>localStorage.setItem(egenKey(),JSON.stringify(records));
+const egenField=(type,name,placeholder='')=>`<input type="${type}" data-field="${name}" ${placeholder?`placeholder="${placeholder}"`:''} ${type==='number'?'step="any"':''}>`;
+function egenAddRow(kind,data={}){
+ const target=$(kind==='weather'?'egenWeatherRows':'egenWorkRows');
+ const names=kind==='weather'?['date','weather','air','mass']:['date','sort','thickness','method','area','tons','adjust'];
+ const types=kind==='weather'?['date','text','number','number']:['date','text','number','text','number','number','number'];
+ const tr=document.createElement('tr');tr.innerHTML=names.map((n,i)=>`<td>${egenField(types[i],n)}</td>`).join('')+'<td><button type="button" class="ghost" data-egen-remove aria-label="Ta bort rad">×</button></td>';
+ target.appendChild(tr);names.forEach(n=>tr.querySelector(`[data-field="${n}"]`).value=data[n]??'');
+}
+function egenRows(id){return [...$(id).querySelectorAll('tr')].map(tr=>Object.fromEntries([...tr.querySelectorAll('[data-field]')].map(el=>[el.dataset.field,el.value]))).filter(row=>Object.values(row).some(Boolean))}
+function egenData(){const f=$('egenForm');const data=Object.fromEntries([...f.querySelectorAll('[name]')].map(el=>[el.name,el.type==='checkbox'?el.checked:el.value]));data.weather=egenRows('egenWeatherRows');data.work=egenRows('egenWorkRows');data.logo=egenLogoData;data.useLogo=$('egenUseLogo').checked;return data}
+function egenFill(data={}){const f=$('egenForm');f.reset();egenLogoData=data.logo||'';$('egenUseLogo').checked=data.useLogo!==false;egenUpdateLogo();for(const el of f.querySelectorAll('[name]'))if(el.name in data){if(el.type==='checkbox')el.checked=!!data[el.name];else el.value=data[el.name]??''} $('egenWeatherRows').innerHTML='';$('egenWorkRows').innerHTML='';(data.weather?.length?data.weather:Array.from({length:4},()=>({}))).forEach(r=>egenAddRow('weather',r));(data.work?.length?data.work:Array.from({length:10},()=>({}))).forEach(r=>egenAddRow('work',r))}
+function egenCurrent(){return {id:egenActiveId||crypto.randomUUID(),...egenData(),updatedAt:new Date().toISOString(),ownerName:profile?.name||me?.email||'',companyName:tenantId()==='lxZFcIJuSaPAzN6dgx7hSLo5PW22'?'Mälardalens Asfalt':'PaveTrack'}}
+function egenStore(){const r=egenCurrent(),all=egenRead(),idx=all.findIndex(x=>x.id===r.id);if(idx>=0)all[idx]=r;else all.unshift(r);try{egenSave(all);egenActiveId=r.id;$('egenStatus').textContent='Sparad på den här enheten. Ladda gärna ner en fil som säkerhetskopia.';egenRenderList();toast('Egenkontroll sparad lokalt');return r}catch(err){$('egenStatus').textContent='Kunde inte spara lokalt: '+err.message;return null}}
+function egenRenderList(){const all=egenRead().sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));$('egenSavedList').innerHTML=all.map(r=>`<article class="user"><div><h3>${esc(r.object||'Utan objektnamn')}</h3><div class="meta">${esc(r.client||'Ingen beställare')} • ${esc((r.updatedAt||'').slice(0,10))}</div></div><div class="actions"><button type="button" class="smallbtn secondary" data-egen-open="${esc(r.id)}">Öppna</button><button type="button" class="smallbtn secondary" data-egen-print="${esc(r.id)}">Skriv ut</button><button type="button" class="smallbtn secondary" data-egen-download="${esc(r.id)}">Ladda ner</button><button type="button" class="smallbtn ghost" data-egen-delete="${esc(r.id)}">Radera</button></div></article>`).join('')||'<p>Inga egenkontroller sparade på den här enheten.</p>'}
+function egenDocument(r){
+ const txt=v=>esc(v??'');
+ const cellRows=(rows,keys,min=0)=>{const items=[...rows];while(items.length<min)items.push({});return items.map(row=>'<tr>'+keys.map(k=>`<td>${txt(row[k])||'&nbsp;'}</td>`).join('')+'</tr>').join('')};
+ const checks=['Underlag','Utläggning','Packning','Avslutning','Brunnar','Miljö','Riskbedömning'];
+ const logo=(r.useLogo!==false&&typeof r.logo==='string'&&/^data:image\/(?:png|jpeg|webp);base64,[a-zA-Z0-9+/=]+$/.test(r.logo))?`<img class="logo" src="${r.logo}" alt="Företagslogotyp">`:'';
+ return `<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Egenkontroll – ${txt(r.object)}</title><style>
+ @page{size:A4 portrait;margin:9mm 10mm}*{box-sizing:border-box}html,body{margin:0;padding:0}body{font:9px/1.18 Arial,Helvetica,sans-serif;color:#1a2922;background:#fff}main{width:100%}
+ .toolbar{background:#e9f4ed;padding:12px;margin-bottom:12px;display:flex;gap:12px;align-items:center}.toolbar button{padding:8px 12px;cursor:pointer}.toolbar span{font-size:12px}
+ .header{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:44px;border-bottom:1.5px solid #286e45;padding-bottom:5px}.brand{display:flex;align-items:center;gap:8px;min-width:0}.brand strong{font-size:13px}.logo{display:block;max-width:44mm;max-height:17mm;object-fit:contain;object-position:left center}.client{font-weight:bold;text-align:right;max-width:48%}
+ h1{text-align:center;font-size:13px;letter-spacing:.3px;margin:8px 0 7px}h2{font-size:10px;margin:7px 0 3px;padding:0}p{margin:3px 0;white-space:pre-wrap;overflow-wrap:anywhere}.details{display:grid;grid-template-columns:1fr 1fr;gap:3px 12px}.note{min-height:15px;border-bottom:1px solid #bfcac1;padding:2px 0}.note.long{min-height:22px}
+ table{border-collapse:collapse;width:100%;table-layout:fixed;margin:3px 0 5px}th,td{border:1px solid #a5b5a8;padding:2px 3px;text-align:left;vertical-align:middle;overflow-wrap:anywhere}th{background:#eaf2eb;font-weight:bold}td{height:16px}tr{break-inside:avoid;page-break-inside:avoid}thead{display:table-header-group}
+ .checks{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:1px solid #a5b5a8;margin:4px 0}.check{padding:4px 2px;border-right:1px solid #a5b5a8;text-align:center;min-height:28px}.check:last-child{border:0}.check b{display:block;font-size:12px;margin-top:2px}.foot{font-size:8px;color:#53675b;margin-top:5px}
+ @media print{.toolbar{display:none!important}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}main{width:auto}}
+ </style></head><body><div class="toolbar"><button onclick="window.print()">Skriv ut / Spara som PDF</button><span>A4 stående. Kontrollera antal sidor i förhandsgranskningen. Fler rader eller långa anteckningar kan kräva fler sidor.</span></div><main>
+ <div class="header"><div class="brand">${logo}<strong>${txt(r.companyName||'PaveTrack')}</strong></div><div class="client">Beställare: ${txt(r.client)}</div></div>
+ <h1>OBJEKTSRAPPORT BELÄGGNINGAR</h1><div class="details"><p><b>Objekt:</b> ${txt(r.object)}</p><p><b>Sort:</b> ${txt(r.sort)}</p><p><b>Utförd av:</b> ${txt(r.performedBy||r.ownerName)}</p><p><b>Datum:</b> ${txt((r.updatedAt||'').slice(0,10))}</p></div>
+ <h2>Förbesiktningsanteckningar</h2><p class="note">${txt(r.preNotes)}</p>
+ <h2>Väder och temperatur</h2><table><thead><tr><th>Datum</th><th>Väder</th><th>Lufttemp °C</th><th>Massatemp °C</th></tr></thead><tbody>${cellRows(r.weather||[],['date','weather','air','mass'],4)}</tbody></table>
+ <h2>Anteckningar</h2><p class="note">${txt(r.notes)}</p>
+ <h2>Beläggningsarbeten</h2><table><thead><tr><th>Datum</th><th>Sort</th><th>Tjocklek</th><th>Handl./Maskin</th><th>Yta (m²)</th><th>Ton</th><th>Justeringston</th></tr></thead><tbody>${cellRows(r.work||[],['date','sort','thickness','method','area','tons','adjust'],10)}</tbody></table>
+ <h2>Utfört enligt kontrollplan</h2><div class="checks">${checks.map((c,i)=>`<div class="check">${i+1}. ${c}<b>${r['check'+(i+1)]?'☑':'☐'}</b></div>`).join('')}</div>
+ <h2>Avvikelser från kontrollplan</h2><p class="note long">${txt(r.deviations)}</p><p><b>Åtgärdat:</b> ${r.resolved?'Ja':'Nej'}</p><p class="foot">Upprättad i PaveTrack • ${txt((r.updatedAt||'').slice(0,10))}</p></main></body></html>`;
+}
+function egenDownload(r){const blob=new Blob([egenDocument(r)],{type:'text/html;charset=utf-8'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Egenkontroll-'+(r.object||'rapport').replace(/[^a-zA-Z0-9åäöÅÄÖ_-]/g,'_').slice(0,45)+'.html';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}
+function egenPrint(r){const win=window.open('','_blank');if(!win){toast('Tillåt popupfönster för att skriva ut.');return}win.document.open();win.document.write(egenDocument(r));win.document.close();win.focus();setTimeout(()=>win.print(),350)}
+$('egenForm').onsubmit=e=>{e.preventDefault();egenStore()};
+$('egenAddWeather').onclick=()=>egenAddRow('weather');$('egenAddWork').onclick=()=>egenAddRow('work');
+$('egenForm').addEventListener('click',e=>{const b=e.target.closest('[data-egen-remove]');if(b)b.closest('tr').remove()});
+$('egenNew').onclick=()=>{egenActiveId=null;egenFill();$('egenStatus').textContent='Ny egenkontroll';};
+$('egenPrint').onclick=()=>egenPrint(egenCurrent());$('egenDownload').onclick=()=>egenDownload(egenCurrent());
+$('egenSavedList').addEventListener('click',e=>{const b=e.target.closest('[data-egen-open],[data-egen-print],[data-egen-download],[data-egen-delete]');if(!b)return;const id=b.dataset.egenOpen||b.dataset.egenPrint||b.dataset.egenDownload||b.dataset.egenDelete,r=egenRead().find(x=>x.id===id);if(!r)return;if(b.dataset.egenOpen){egenActiveId=id;egenFill(r);$('egenForm').scrollIntoView({behavior:'smooth'})}else if(b.dataset.egenPrint)egenPrint(r);else if(b.dataset.egenDownload)egenDownload(r);else if(b.dataset.egenDelete&&confirm('Radera denna lokalt sparade egenkontroll?')){egenSave(egenRead().filter(x=>x.id!==id));if(egenActiveId===id){egenActiveId=null;egenFill()}egenRenderList()}});
+egenFill();egenRenderList();
