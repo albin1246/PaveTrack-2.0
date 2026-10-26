@@ -453,32 +453,55 @@ let egenPdfBusy=false;
 const egenIsIOS=()=>/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const egenPdfFilename=r=>'Egenkontroll-'+(r.object||'rapport').replace(/[^a-zA-Z0-9åäöÅÄÖ_-]/g,'_').slice(0,45)+'.pdf';
 async function egenCreatePdf(r){
- if(typeof html2pdf!=='function')throw new Error('PDF-biblioteket kunde inte laddas. Kontrollera internetanslutningen.');
+ if(typeof html2canvas!=='function'||typeof window.jspdf?.jsPDF!=='function')throw new Error('PDF-biblioteket kunde inte laddas.');
  let frame;
  try{
+  // Render in a same-origin document INSIDE the viewport. Capturing an offscreen
+  // iframe with html2pdf produced blank pages in Safari and Chrome.
   frame=document.createElement('iframe');
   frame.title='PDF-rendering';frame.setAttribute('aria-hidden','true');
-  Object.assign(frame.style,{position:'fixed',left:'-12000px',top:'0',width:'794px',height:'1123px',border:'0',pointerEvents:'none'});
+  Object.assign(frame.style,{position:'fixed',left:'0',top:'0',width:'794px',height:'1123px',border:'0',zIndex:'-1',pointerEvents:'none',opacity:'1'});
   document.body.appendChild(frame);
   const doc=frame.contentDocument;
   doc.open();doc.write(egenDocument(r));doc.close();
-  await new Promise(resolve=>setTimeout(resolve,180));
+  const main=doc.querySelector('main');
+  if(!main)throw new Error('Rapporten kunde inte läsas.');
+  const toolbar=doc.querySelector('.toolbar');if(toolbar)toolbar.remove();
+  main.style.width='192mm';main.style.maxWidth='192mm';
   await Promise.all(Array.from(doc.images).map(img=>img.complete?Promise.resolve():new Promise(resolve=>{
    img.onload=resolve;img.onerror=resolve;setTimeout(resolve,4000)
   })));
-  const main=doc.querySelector('main');
-  if(!main)throw new Error('Rapporten kunde inte läsas.');
-  main.style.width='192mm';main.style.maxWidth='192mm';
-  const worker=html2pdf().set({
-   margin:[9,9,9,9],filename:egenPdfFilename(r),
-   image:{type:'jpeg',quality:0.97},
-   html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff',scrollX:0,scrollY:0,windowWidth:794},
-   jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},
-   pagebreak:{mode:['css','legacy'],avoid:['tr','.signature','.deviation']}
-  }).from(main).toPdf();
-  const pdf=await worker.get('pdf');
+  if(doc.fonts?.ready)await doc.fonts.ready;
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  const width=Math.ceil(main.getBoundingClientRect().width);
+  const height=Math.ceil(main.scrollHeight);
+  if(width<200||height<100)throw new Error('Rapportens layout kunde inte beräknas.');
+  frame.style.height=Math.max(1123,height+50)+'px';
+  const canvas=await html2canvas(main,{scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false,scrollX:0,scrollY:0,windowWidth:794,windowHeight:Math.max(1123,height+50)});
+  if(!canvas.width||!canvas.height)throw new Error('Rapporten blev tom.');
+  // Detect a completely white canvas, rather than delivering a corrupt blank PDF.
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});
+  const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+  let dark=0;for(let y=10;y<canvas.height;y+=19){for(let x=10;x<canvas.width;x+=19){const i=(y*canvas.width+x)*4;if(pixels[i]<190||pixels[i+1]<190||pixels[i+2]<190)dark++}}
+  if(dark<12)throw new Error('PDF-renderingen blev vit. Försök igen eller använd Skriv ut via Safari.');
+  const pdf=new jspdf.jsPDF({unit:'mm',format:'a4',orientation:'portrait',compress:true});
+  const pageW=192,pageH=279,scale=pageW/canvas.width;
+  const naturalH=canvas.height*scale;
+  // A nearly A4-sized report is reduced slightly to fit one page.
+  if(naturalH<=pageH*1.4){
+   const fit=Math.min(1,pageH/naturalH);
+   pdf.addImage(canvas.toDataURL('image/jpeg',0.96),'JPEG',9,9,pageW*fit,naturalH*fit);
+  }else{
+   const slicePx=Math.floor(pageH/scale);
+   for(let top=0,page=0;top<canvas.height;top+=slicePx,page++){
+    if(page)pdf.addPage();
+    const slice=document.createElement('canvas');slice.width=canvas.width;slice.height=Math.min(slicePx,canvas.height-top);
+    slice.getContext('2d').drawImage(canvas,0,top,canvas.width,slice.height,0,0,canvas.width,slice.height);
+    pdf.addImage(slice.toDataURL('image/jpeg',0.96),'JPEG',9,9,pageW,slice.height*scale);
+   }
+  }
   const blob=pdf.output('blob');
-  if(blob.type!=='application/pdf'||blob.size<100)throw new Error('Den skapade PDF-filen är tom eller felaktig.');
+  if(blob.type!=='application/pdf'||blob.size<100)throw new Error('PDF-filen kunde inte skapas.');
   return blob;
  }finally{frame?.remove()}
 }
