@@ -47,7 +47,7 @@ document.querySelectorAll('[data-language]').forEach(b=>b.onclick=()=>setLanguag
 
 const fmt=n=>new Intl.NumberFormat('sv-SE',{maximumFractionDigits:2}).format(n||0), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateLocal=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
-let auth,db,functionsClient,me=null,profile=null,jobs=[],users=[],companies=[],teams=[],unsubs=[],mode='login',ownerWorkAvailable=false,ownerWorkMode=false,companyRole=null,verifiedOwnCompany=false;
+let auth,db,functionsClient,me=null,profile=null,jobs=[],users=[],companies=[],teams=[],unsubs=[],mode='login',ownerWorkAvailable=false,ownerWorkMode=false,companyRole=null,verifiedOwnCompany=false,companyApproved=false;
 const PLATFORM_OWNER_UID=window.PAVETRACK_OWNER_UID||'';
 const platformOwner=()=>!!me&&me.uid===PLATFORM_OWNER_UID;
 const companyRef=id=>doc(db,'companies',id);
@@ -60,7 +60,7 @@ const tenantId=()=>profile?.companyId;
 function toast(t){$('toast').textContent=t;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',3800)}
 function resetSubs(){unsubs.forEach(f=>f());unsubs=[];jobs=[];users=[];companies=[];teams=[]}
 function page(id){['auth','pending','dashboard','config'].forEach(k=>show(k,k===id));show('logout',id!=='auth'&&id!=='config')}
-function view(name){document.querySelectorAll('.view').forEach(e=>e.classList.toggle('hidden',e.id!==name+'View'));document.querySelectorAll('#nav button').forEach(e=>e.classList.toggle('active',e.dataset.view===name))}
+function view(name){if(name==='egenkontroll'&&!isAdmin()){toast('Endast administratörer har tillgång till egenkontroller.');return}document.querySelectorAll('.view').forEach(e=>e.classList.toggle('hidden',e.id!==name+'View'));document.querySelectorAll('#nav button').forEach(e=>e.classList.toggle('active',e.dataset.view===name))}
 function isAdmin(){return !!tenantId() && (['admin','superadmin'].includes(companyRole) || (platformOwner() && verifiedOwnCompany));}
 function isCompanySuperadmin(){return companyRole==='superadmin' || (platformOwner() && verifiedOwnCompany);}
 function resetForm(){$('jobForm').reset();$('jobId').value='';$('jobDate').value=dateLocal();$('startTime').value='';$('endTime').value='';updateDuration();$('jobTeam').value=profile?.teamId||'';$('formTitle').textContent=tr('Nytt asfaltjobb');show('cancelEdit',false)}
@@ -118,7 +118,8 @@ function setOwnerMode(work){
  $('ownerWorkButton').classList.toggle('active',ownerWorkMode);
  $('ownerPlatformButton').classList.toggle('active',!ownerWorkMode);
  show('companiesNav',!ownerWorkMode);
- for(const id of ['jobs','history','stats','egenkontroll'])show(id+'Nav',ownerWorkMode);
+ for(const id of ['jobs','history','stats'])show(id+'Nav',ownerWorkMode);
+ show('egenkontrollNav',ownerWorkMode&&ownerWorkAvailable&&isAdmin());
  show('usersNav',ownerWorkMode&&ownerWorkAvailable&&isAdmin());
  show('teamAdmin',ownerWorkMode&&isAdmin());
  $('roleBadge').textContent=ownerWorkMode?(isCompanySuperadmin()?'SUPERADMIN':companyRole==='admin'?'ADMIN':'ANVÄNDARE'):'SYSTEMÄGARE';
@@ -187,7 +188,7 @@ async function loadProfile(){
  }
  if(!profile&&isOwner)profile={name:me.displayName||me.email,role:'platformOwner',status:'approved',companyId:null};
  if(!profile){page('pending');$('pendingName').textContent='Din inloggning finns, men företagsanslutningen saknas. Ange inbjudningskoden nedan.';show('repairJoin',!isOwner);return}show('repairJoin',false);
- let companyApproved=false;
+ companyApproved=false;
  if(profile.companyId){try{const company=await getDoc(companyRef(profile.companyId));companyApproved=company.exists()&&company.data().status==='approved';verifiedOwnCompany=companyApproved&&platformOwner()&&company.id===me.uid&&company.data().founderUid===me.uid&&companyRole==='superadmin'&&profile.status==='approved';}catch(err){if(!platformOwner())throw err;console.warn('Work membership check:',err);}}
  ownerWorkAvailable=platformOwner()&&!!tenantId()&&profile.status==='approved'&&companyApproved&&['admin','superadmin'].includes(companyRole);
  if(isOwner && !ownerWorkAvailable){
@@ -196,7 +197,7 @@ async function loadProfile(){
   $('workSetup').querySelector('p').textContent='PaveTrack kunde inte verifiera din företagsbehörighet: '+hint+'. Kontrollera att du använder rätt Firebase-projekt. Ingen data har ändrats.';
  }
  if(!platformOwner()&&(!companyApproved||profile.status!=='approved')){resetSubs();page('pending');$('pendingName').textContent=companyApproved?`${profile.name||me.email} • ${tr('Status: ')}${profile.status}`:'Företaget väntar på ditt godkännande eller är pausat.';return}
- page('dashboard');egenActiveId=null;egenFill();egenRenderList();$('greeting').textContent=tr('HEJ, ')+(profile.name||tr('ANVÄNDARE')).toUpperCase();
+ page('dashboard');egenActiveId=null;egenFill();egenStartCloud();$('greeting').textContent=tr('HEJ, ')+(profile.name||tr('ANVÄNDARE')).toUpperCase();
  show('ownerModeSwitch',platformOwner());
  show('companiesNav',platformOwner());show('usersNav',!!tenantId()&&companyApproved&&profile.status==='approved'&&isAdmin());show('teamAdmin',isAdmin());
  if(platformOwner()){
@@ -206,7 +207,8 @@ async function loadProfile(){
   if(!ownerWorkAvailable)ownerWorkMode=false;
   setOwnerMode(ownerWorkMode);
  }else{
-  for(const id of ['jobs','history','stats','egenkontroll'])show(id+'Nav');
+  for(const id of ['jobs','history','stats'])show(id+'Nav');
+  show('egenkontrollNav',isAdmin());
   $('roleBadge').textContent=companyRole==='superadmin'?'SUPERADMIN':companyRole==='admin'?'ADMIN':'ANVÄNDARE';
   view('jobs');
  }
@@ -216,7 +218,7 @@ $('repairJoinForm').onsubmit=async e=>{e.preventDefault();if(!me)return;const bu
 $('ownerPlatformButton').onclick=()=>setOwnerMode(false);
 $('ownerWorkButton').onclick=()=>setOwnerMode(true);
 
-function init(){if(!window.PAVETRACK_FIREBASE_CONFIG?.apiKey||!window.PAVETRACK_FIREBASE_CONFIG?.projectId){page('config');return}try{const app=initializeApp(window.PAVETRACK_FIREBASE_CONFIG);auth=getAuth(app);db=getFirestore(app);functionsClient=getFunctions(app,'europe-west1');onAuthStateChanged(auth,async user=>{resetSubs();me=user;profile=null;if(!user){page('auth');return}try{await loadProfile()}catch(e){if(platformOwner()){console.error('Systemägarläge kunde inte starta:',e);page('dashboard');$('pendingName').textContent='';$('greeting').textContent='HEJ, SYSTEMÄGARE';show('ownerModeSwitch');setOwnerMode(false);listenCompanies();toast('Kontrollera anslutningen: '+e.message)}else{page('pending');$('pendingName').textContent=tr('Kunde inte läsa kontot: ')+e.message}}})}catch(e){page('config');$('config').innerHTML='<h2>Fel i Firebase-konfigurationen</h2><p>'+esc(e.message)+'</p>'}}
+function init(){if(!window.PAVETRACK_FIREBASE_CONFIG?.apiKey||!window.PAVETRACK_FIREBASE_CONFIG?.projectId){page('config');return}try{const app=initializeApp(window.PAVETRACK_FIREBASE_CONFIG);auth=getAuth(app);db=getFirestore(app);functionsClient=getFunctions(app,'europe-west1');onAuthStateChanged(auth,async user=>{resetSubs();me=user;profile=null;if(!user){egenCloudRecords=[];egenCloudReady=false;page('auth');return}try{await loadProfile()}catch(e){if(platformOwner()){console.error('Systemägarläge kunde inte starta:',e);page('dashboard');$('pendingName').textContent='';$('greeting').textContent='HEJ, SYSTEMÄGARE';show('ownerModeSwitch');setOwnerMode(false);listenCompanies();toast('Kontrollera anslutningen: '+e.message)}else{page('pending');$('pendingName').textContent=tr('Kunde inte läsa kontot: ')+e.message}}})}catch(e){page('config');$('config').innerHTML='<h2>Fel i Firebase-konfigurationen</h2><p>'+esc(e.message)+'</p>'}}
 $('loginTab').onclick=()=>{mode='login';show('nameWrap',false);show('registerCompanyFields',false);$('authSubmit').textContent=tr('Logga in');$('loginTab').classList.add('active');$('registerTab').classList.remove('active');show('rememberWrap')};$('registerTab').onclick=()=>{mode='register';show('nameWrap');show('registerCompanyFields');$('authSubmit').textContent=tr('Skapa konto');$('registerTab').classList.add('active');$('loginTab').classList.remove('active');show('rememberWrap',false)};
 $('authForm').onsubmit=async e=>{e.preventDefault();$('authMessage').textContent='';const email=$('email').value.trim(),password=$('password').value;try{if(mode==='register'){
  const name=$('name').value.trim(),isFounder=$('accountType').value==='company',companyName=$('companyName').value.trim(),orgNumber=$('orgNumber').value.trim(),joinId=$('joinCompanyId').value.trim();
@@ -364,8 +366,56 @@ function egenFill(data={}){const f=$('egenForm');f.reset();egenSignatureLoad(dat
 egenLogoChoice=data.logoChoice||(egenLogoData?'custom':Object.keys(data).length? 'none':egenDefaultLogoChoice());
 $('egenUseLogo').checked=data.useLogo!==false;egenUpdateLogo();for(const el of f.querySelectorAll('[name]'))if(el.name in data){if(el.type==='checkbox')el.checked=!!data[el.name];else el.value=data[el.name]??''} $('egenWeatherRows').innerHTML='';$('egenWorkRows').innerHTML='';(data.weather?.length?data.weather:Array.from({length:4},()=>({}))).forEach(r=>egenAddRow('weather',r));(data.work?.length?data.work:Array.from({length:10},()=>({}))).forEach(r=>egenAddRow('work',r))}
 function egenCurrent(){return {id:egenActiveId||crypto.randomUUID(),...egenData(),updatedAt:new Date().toISOString(),ownerName:profile?.name||me?.email||'',companyName:tenantId()==='lxZFcIJuSaPAzN6dgx7hSLo5PW22'?'Mälardalens Asfalt':'PaveTrack'}}
-function egenStore(){const r=egenCurrent(),all=egenRead(),idx=all.findIndex(x=>x.id===r.id);if(idx>=0)all[idx]=r;else all.unshift(r);try{egenSave(all);egenActiveId=r.id;$('egenStatus').textContent='Sparad på den här enheten. Ladda gärna ner en fil som säkerhetskopia.';egenRenderList();toast('Egenkontroll sparad lokalt');return r}catch(err){$('egenStatus').textContent='Kunde inte spara lokalt: '+err.message;return null}}
-function egenRenderList(){const all=egenRead().sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));$('egenSavedList').innerHTML=all.map(r=>`<article class="user"><div><h3>${esc(r.object||'Utan objektnamn')}</h3><div class="meta">${esc(r.client||'Ingen beställare')} • ${esc((r.updatedAt||'').slice(0,10))}</div></div><div class="actions"><button type="button" class="smallbtn secondary" data-egen-open="${esc(r.id)}">Öppna</button><button type="button" class="smallbtn secondary" data-egen-print="${esc(r.id)}">Skriv ut</button><button type="button" class="smallbtn secondary" data-egen-download="${esc(r.id)}">Ladda ner</button><button type="button" class="smallbtn ghost" data-egen-delete="${esc(r.id)}">Radera</button></div></article>`).join('')||'<p>Inga egenkontroller sparade på den här enheten.</p>'}
+let egenCloudRecords=[],egenCloudReady=false;
+const egenCollection=()=>collection(db,'companies',tenantId(),'egenkontroller');
+const egenAllowed=()=>!!(me&&tenantId()&&profile?.status==='approved'&&companyApproved&&isAdmin());
+function egenStartCloud(){
+ egenCloudRecords=[];egenCloudReady=false;egenRenderList();
+ if(!egenAllowed())return;
+ const q=query(egenCollection());
+ unsubs.push(onSnapshot(q,snapshot=>{
+  egenCloudRecords=snapshot.docs.map(d=>({id:d.id,...d.data().payload,ownerUid:d.data().ownerUid,ownerName:d.data().ownerName,updatedAt:d.data().updatedAt?.toDate?.()?.toISOString()||d.data().payload?.updatedAt||''}));
+  egenCloudReady=true;egenRenderList();
+ },err=>{$('egenStatus').textContent='Kunde inte hämta egenkontroller från Firebase: '+err.message;toast('Egenkontroll: '+err.message)}));
+}
+async function egenStore(){
+ if(!egenAllowed()){toast('Endast admin och superadmin kan spara egenkontroller.');return null}
+ const r=egenCurrent(),previous=egenCloudRecords.find(x=>x.id===r.id);
+ if(previous&&previous.ownerUid!==me.uid&&!isAdmin()){toast('Du får inte ändra denna egenkontroll.');return null}
+ const payload={...r};delete payload.ownerUid;delete payload.ownerName;
+ if(new Blob([JSON.stringify(payload)]).size>800000){toast('Rapporten är för stor. Minska bild- eller signaturstorleken.');return null}
+ const data={ownerUid:previous?.ownerUid||me.uid,ownerName:previous?.ownerName||profile?.name||me.email||'',payload,updatedAt:serverTimestamp(),updatedBy:me.uid};
+ if(!previous){data.createdAt=serverTimestamp()}
+ try{
+  if(previous)await updateDoc(doc(egenCollection(),r.id),data);
+  else await setDoc(doc(egenCollection(),r.id),data);
+  egenActiveId=r.id;$('egenStatus').textContent='Sparad i Firebase – tillgänglig på dina enheter.';toast('Egenkontroll sparad i Firebase!');return r;
+ }catch(err){$('egenStatus').textContent='Kunde inte spara i Firebase: '+err.message;toast('Sparning misslyckades');return null}
+}
+function egenRenderList(){
+ const all=[...egenCloudRecords].sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
+ $('egenSavedList').innerHTML=all.map(r=>`<article class="user"><div><h3>${esc(r.object||'Utan objektnamn')}</h3><div class="meta">${esc(r.client||'Ingen beställare')} • ${esc((r.updatedAt||'').slice(0,10))} • ${esc(r.ownerName||'')}</div></div><div class="actions"><button type="button" class="smallbtn secondary" data-egen-open="${esc(r.id)}">Öppna</button><button type="button" class="smallbtn secondary" data-egen-print="${esc(r.id)}">Skriv ut</button><button type="button" class="smallbtn secondary" data-egen-download="${esc(r.id)}">Ladda ner</button><button type="button" class="smallbtn ghost" data-egen-delete="${esc(r.id)}">Radera</button></div></article>`).join('')||(egenCloudReady?'<p>Inga egenkontroller sparade i Firebase ännu.</p>':'<p>Hämtar egenkontroller från Firebase…</p>');
+ const local=egenRead();$('egenMigrate').hidden=!local.length;
+ $('egenLocalCount').textContent=local.length?`${local.length} äldre lokalt sparade rapporter finns på denna enhet. Du kan föra över dem till Firebase.`:'';
+}
+$('egenMigrate').onclick=async()=>{
+ if(!egenAllowed()||!egenCloudReady){toast('Vänta tills Firebase har laddat klart.');return}
+ const local=egenRead();if(!local.length)return;
+ if(!confirm(`Föra över ${local.length} lokala egenkontroller till Firebase? Originalen behålls i webbläsaren.`))return;
+ let success=0,fail=0;
+ for(const old of local){
+  const existing=egenCloudRecords.find(r=>r.id===old.id);
+  if(existing){fail++;continue}
+  const payload={...old,id:old.id||crypto.randomUUID()};
+  if(new Blob([JSON.stringify(payload)]).size>800000){fail++;continue}
+  try{
+   await setDoc(doc(egenCollection(),payload.id),{ownerUid:me.uid,ownerName:profile?.name||me.email||'',payload,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedBy:me.uid});
+   success++;
+  }catch(e){console.error('Migrering misslyckades',e);fail++}
+ }
+ $('egenStatus').textContent=`Överförda: ${success}. Ej överförda (t.ex. redan finns): ${fail}. Lokala original finns kvar.`;
+ toast(`Överförda till Firebase: ${success}`);
+};
 function egenDocument(r){
  const txt=v=>esc(v??'');
  const cellRows=(rows,keys,min=0)=>{const items=[...(rows||[])];while(items.length<min)items.push({});return items.map(row=>'<tr>'+keys.map(k=>`<td>${txt(row[k])||'&nbsp;'}</td>`).join('')+'</tr>').join('')};
@@ -427,5 +477,5 @@ $('egenAddWeather').onclick=()=>egenAddRow('weather');$('egenAddWork').onclick=(
 $('egenForm').addEventListener('click',e=>{const b=e.target.closest('[data-egen-remove]');if(b)b.closest('tr').remove()});
 $('egenNew').onclick=()=>{egenActiveId=null;egenFill();$('egenStatus').textContent='Ny egenkontroll';};
 $('egenPrint').onclick=()=>egenPrint(egenCurrent());$('egenDownload').onclick=()=>egenDownload(egenCurrent());
-$('egenSavedList').addEventListener('click',e=>{const b=e.target.closest('[data-egen-open],[data-egen-print],[data-egen-download],[data-egen-delete]');if(!b)return;const id=b.dataset.egenOpen||b.dataset.egenPrint||b.dataset.egenDownload||b.dataset.egenDelete,r=egenRead().find(x=>x.id===id);if(!r)return;if(b.dataset.egenOpen){egenActiveId=id;egenFill(r);$('egenForm').scrollIntoView({behavior:'smooth'})}else if(b.dataset.egenPrint)egenPrint(r);else if(b.dataset.egenDownload)egenDownload(r);else if(b.dataset.egenDelete&&confirm('Radera denna lokalt sparade egenkontroll?')){egenSave(egenRead().filter(x=>x.id!==id));if(egenActiveId===id){egenActiveId=null;egenFill()}egenRenderList()}});
+$('egenSavedList').addEventListener('click',async e=>{const b=e.target.closest('[data-egen-open],[data-egen-print],[data-egen-download],[data-egen-delete]');if(!b)return;const id=b.dataset.egenOpen||b.dataset.egenPrint||b.dataset.egenDownload||b.dataset.egenDelete,r=egenCloudRecords.find(x=>x.id===id);if(!r||!egenAllowed())return;if(b.dataset.egenOpen){egenActiveId=id;egenFill(r);$('egenForm').scrollIntoView({behavior:'smooth'})}else if(b.dataset.egenPrint)egenPrint(r);else if(b.dataset.egenDownload)egenDownload(r);else if(b.dataset.egenDelete&&confirm('Radera denna egenkontroll från Firebase?')){try{await deleteDoc(doc(egenCollection(),id));if(egenActiveId===id){egenActiveId=null;egenFill()}toast('Egenkontroll raderad')}catch(err){toast('Kunde inte radera: '+err.message)}}});
 egenFill();egenRenderList();
