@@ -321,8 +321,46 @@ function egenAddRow(kind,data={}){
  target.appendChild(tr);names.forEach(n=>tr.querySelector(`[data-field="${n}"]`).value=data[n]??'');
 }
 function egenRows(id){return [...$(id).querySelectorAll('tr')].map(tr=>Object.fromEntries([...tr.querySelectorAll('[data-field]')].map(el=>[el.dataset.field,el.value]))).filter(row=>Object.values(row).some(Boolean))}
-function egenData(){const f=$('egenForm');const data=Object.fromEntries([...f.querySelectorAll('[name]')].map(el=>[el.name,el.type==='checkbox'?el.checked:el.value]));data.weather=egenRows('egenWeatherRows');data.work=egenRows('egenWorkRows');data.logo=egenLogoChoice==='custom'?egenLogoData:'';data.logoChoice=egenLogoChoice;data.useLogo=$('egenUseLogo').checked;return data}
-function egenFill(data={}){const f=$('egenForm');f.reset();egenLogoData=data.logo||'';
+let egenSignatureData='';
+const egenSignatureCanvas=$('egenSignatureCanvas');
+const egenSignatureCtx=egenSignatureCanvas.getContext('2d');
+egenSignatureCtx.strokeStyle='#111';
+egenSignatureCtx.lineWidth=3;
+egenSignatureCtx.lineCap='round';
+egenSignatureCtx.lineJoin='round';
+let egenSignatureDrawing=false,egenSignatureMoved=false;
+function egenSignaturePosition(e){
+ const rect=egenSignatureCanvas.getBoundingClientRect();
+ return {x:(e.clientX-rect.left)*egenSignatureCanvas.width/rect.width,y:(e.clientY-rect.top)*egenSignatureCanvas.height/rect.height};
+}
+function egenSignatureLoad(data=''){
+ egenSignatureCtx.clearRect(0,0,egenSignatureCanvas.width,egenSignatureCanvas.height);
+ egenSignatureData='';
+ if(!data||!/^data:image\/png;base64,[a-zA-Z0-9+/=]+$/.test(data))return;
+ const image=new Image();
+ image.onload=()=>{egenSignatureCtx.clearRect(0,0,egenSignatureCanvas.width,egenSignatureCanvas.height);egenSignatureCtx.drawImage(image,0,0,egenSignatureCanvas.width,egenSignatureCanvas.height);egenSignatureData=data};
+ image.src=data;
+}
+egenSignatureCanvas.addEventListener('pointerdown',e=>{
+ e.preventDefault();egenSignatureDrawing=true;egenSignatureMoved=false;
+ egenSignatureCanvas.setPointerCapture(e.pointerId);
+ const point=egenSignaturePosition(e);egenSignatureCtx.beginPath();egenSignatureCtx.moveTo(point.x,point.y);
+});
+egenSignatureCanvas.addEventListener('pointermove',e=>{
+ if(!egenSignatureDrawing)return;e.preventDefault();
+ const point=egenSignaturePosition(e);egenSignatureCtx.lineTo(point.x,point.y);egenSignatureCtx.stroke();egenSignatureMoved=true;
+});
+function egenSignatureEnd(e){
+ if(!egenSignatureDrawing)return;
+ egenSignatureDrawing=false;
+ if(!egenSignatureMoved){const point=egenSignaturePosition(e);egenSignatureCtx.beginPath();egenSignatureCtx.arc(point.x,point.y,1.5,0,Math.PI*2);egenSignatureCtx.fillStyle='#111';egenSignatureCtx.fill()}
+ egenSignatureData=egenSignatureCanvas.toDataURL('image/png');
+}
+egenSignatureCanvas.addEventListener('pointerup',egenSignatureEnd);
+egenSignatureCanvas.addEventListener('pointercancel',egenSignatureEnd);
+$('egenClearSignature').onclick=()=>egenSignatureLoad();
+function egenData(){const f=$('egenForm');const data=Object.fromEntries([...f.querySelectorAll('[name]')].map(el=>[el.name,el.type==='checkbox'?el.checked:el.value]));data.weather=egenRows('egenWeatherRows');data.work=egenRows('egenWorkRows');data.logo=egenLogoChoice==='custom'?egenLogoData:'';data.logoChoice=egenLogoChoice;data.useLogo=$('egenUseLogo').checked;data.signature=egenSignatureData;return data}
+function egenFill(data={}){const f=$('egenForm');f.reset();egenSignatureLoad(data.signature||'');egenLogoData=data.logo||'';
 egenLogoChoice=data.logoChoice||(egenLogoData?'custom':Object.keys(data).length? 'none':egenDefaultLogoChoice());
 $('egenUseLogo').checked=data.useLogo!==false;egenUpdateLogo();for(const el of f.querySelectorAll('[name]'))if(el.name in data){if(el.type==='checkbox')el.checked=!!data[el.name];else el.value=data[el.name]??''} $('egenWeatherRows').innerHTML='';$('egenWorkRows').innerHTML='';(data.weather?.length?data.weather:Array.from({length:4},()=>({}))).forEach(r=>egenAddRow('weather',r));(data.work?.length?data.work:Array.from({length:10},()=>({}))).forEach(r=>egenAddRow('work',r))}
 function egenCurrent(){return {id:egenActiveId||crypto.randomUUID(),...egenData(),updatedAt:new Date().toISOString(),ownerName:profile?.name||me?.email||'',companyName:tenantId()==='lxZFcIJuSaPAzN6dgx7hSLo5PW22'?'Mälardalens Asfalt':'PaveTrack'}}
@@ -368,7 +406,7 @@ function egenDocument(r){
  .deviation .note{border:0;min-height:18mm}.resolved{border-left:1px solid #aab8af;padding:5px}
  .signature{display:grid;grid-template-columns:1.2fr .65fr 1fr;gap:6mm;margin-top:5mm}
  .signature div{border-bottom:1px solid #889a90;min-height:10mm;padding:2px 0}
- .signature b{display:block;margin-bottom:4px}
+ .signature b{display:block;margin-bottom:4px}.signature img{display:block;max-width:100%;max-height:9mm;object-fit:contain;object-position:left bottom}
  .foot{font-size:7px;color:#65766c;margin-top:3mm}
  @media print{.toolbar{display:none!important}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}main{max-width:none}}
  </style></head><body><div class="toolbar"><button onclick="window.print()">Skriv ut / Spara som PDF</button><span>Välj A4 och 100 % skala. Kontrollera sidantalet: långa texter eller fler rader kan kräva en extra sida.</span></div><main>
@@ -379,7 +417,7 @@ function egenDocument(r){
  <h2>Beläggningsarbeten</h2><table class="work"><thead><tr><th>Datum</th><th>Sort</th><th>Tjocklek (mm)</th><th>Handl./Maskin</th><th>Yta (m²)</th><th>Ton</th><th>Justeringston</th></tr></thead><tbody>${cellRows(r.work,['date','sort','thickness','method','area','tons','adjust'],10)}</tbody></table>
  <h2>Utfört enligt kontrollplan</h2><table class="checks"><thead><tr>${checks.map((c,i)=>`<th>${i+1}. ${c}</th>`).join('')}</tr></thead><tbody><tr>${checks.map((c,i)=>`<td><span class="mark">${r['check'+(i+1)]?'☑':'☐'}</span> ${r['check'+(i+1)]?'OK':'Ej markerad'}</td>`).join('')}</tr></tbody></table>
  <h2>Avvikelser från kontrollplan</h2><div class="deviation"><div class="note">${txt(r.deviations)}</div><div class="resolved"><b>Åtgärdat</b><p>${r.resolved?'☑ Ja':'☐ Ja'}</p><p>${r.resolved?'☐ Nej':'☑ Nej'}</p></div></div>
- <footer class="signature"><div><b>Utförd av</b>${txt(r.performedBy||r.ownerName)}</div><div><b>Datum</b>${date}</div><div><b>Signatur</b></div></footer><p class="foot">Upprättad i PaveTrack</p>
+ <footer class="signature"><div><b>Utförd av</b>${txt(r.performedBy||r.ownerName)}</div><div><b>Datum</b>${date}</div><div><b>Signatur</b>${r.signature&&/^data:image\/png;base64,[a-zA-Z0-9+/=]+$/.test(r.signature)?`<img src="${r.signature}" alt="Signatur">`:''}</div></footer><p class="foot">Upprättad i PaveTrack</p>
  </main></body></html>`;
 }
 function egenDownload(r){const blob=new Blob([egenDocument(r)],{type:'text/html;charset=utf-8'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Egenkontroll-'+(r.object||'rapport').replace(/[^a-zA-Z0-9åäöÅÄÖ_-]/g,'_').slice(0,45)+'.html';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}
