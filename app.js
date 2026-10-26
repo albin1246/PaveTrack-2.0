@@ -297,26 +297,56 @@ function egenStore(){const r=egenCurrent(),all=egenRead(),idx=all.findIndex(x=>x
 function egenRenderList(){const all=egenRead().sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));$('egenSavedList').innerHTML=all.map(r=>`<article class="user"><div><h3>${esc(r.object||'Utan objektnamn')}</h3><div class="meta">${esc(r.client||'Ingen beställare')} • ${esc((r.updatedAt||'').slice(0,10))}</div></div><div class="actions"><button type="button" class="smallbtn secondary" data-egen-open="${esc(r.id)}">Öppna</button><button type="button" class="smallbtn secondary" data-egen-print="${esc(r.id)}">Skriv ut</button><button type="button" class="smallbtn secondary" data-egen-download="${esc(r.id)}">Ladda ner</button><button type="button" class="smallbtn ghost" data-egen-delete="${esc(r.id)}">Radera</button></div></article>`).join('')||'<p>Inga egenkontroller sparade på den här enheten.</p>'}
 function egenDocument(r){
  const txt=v=>esc(v??'');
- const cellRows=(rows,keys,min=0)=>{const items=[...rows];while(items.length<min)items.push({});return items.map(row=>'<tr>'+keys.map(k=>`<td>${txt(row[k])||'&nbsp;'}</td>`).join('')+'</tr>').join('')};
+ const cellRows=(rows,keys,min=0)=>{const items=[...(rows||[])];while(items.length<min)items.push({});return items.map(row=>'<tr>'+keys.map(k=>`<td>${txt(row[k])||'&nbsp;'}</td>`).join('')+'</tr>').join('')};
  const checks=['Underlag','Utläggning','Packning','Avslutning','Brunnar','Miljö','Riskbedömning'];
  const logo=(r.useLogo!==false&&typeof r.logo==='string'&&/^data:image\/(?:png|jpeg|webp);base64,[a-zA-Z0-9+/=]+$/.test(r.logo))?`<img class="logo" src="${r.logo}" alt="Företagslogotyp">`:'';
+ const date=txt((r.updatedAt||'').slice(0,10));
  return `<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Egenkontroll – ${txt(r.object)}</title><style>
- @page{size:A4 portrait;margin:9mm 10mm}*{box-sizing:border-box}html,body{margin:0;padding:0}body{font:9px/1.18 Arial,Helvetica,sans-serif;color:#1a2922;background:#fff}main{width:100%}
- .toolbar{background:#e9f4ed;padding:12px;margin-bottom:12px;display:flex;gap:12px;align-items:center}.toolbar button{padding:8px 12px;cursor:pointer}.toolbar span{font-size:12px}
- .header{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:44px;border-bottom:1.5px solid #286e45;padding-bottom:5px}.brand{display:flex;align-items:center;gap:8px;min-width:0}.brand strong{font-size:13px}.logo{display:block;max-width:44mm;max-height:17mm;object-fit:contain;object-position:left center}.client{font-weight:bold;text-align:right;max-width:48%}
- h1{text-align:center;font-size:13px;letter-spacing:.3px;margin:8px 0 7px}h2{font-size:10px;margin:7px 0 3px;padding:0}p{margin:3px 0;white-space:pre-wrap;overflow-wrap:anywhere}.details{display:grid;grid-template-columns:1fr 1fr;gap:3px 12px}.note{min-height:15px;border-bottom:1px solid #bfcac1;padding:2px 0}.note.long{min-height:22px}
- table{border-collapse:collapse;width:100%;table-layout:fixed;margin:3px 0 5px}th,td{border:1px solid #a5b5a8;padding:2px 3px;text-align:left;vertical-align:middle;overflow-wrap:anywhere}th{background:#eaf2eb;font-weight:bold}td{height:16px}tr{break-inside:avoid;page-break-inside:avoid}thead{display:table-header-group}
- .checks{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:1px solid #a5b5a8;margin:4px 0}.check{padding:4px 2px;border-right:1px solid #a5b5a8;text-align:center;min-height:28px}.check:last-child{border:0}.check b{display:block;font-size:12px;margin-top:2px}.foot{font-size:8px;color:#53675b;margin-top:5px}
- @media print{.toolbar{display:none!important}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}main{width:auto}}
- </style></head><body><div class="toolbar"><button onclick="window.print()">Skriv ut / Spara som PDF</button><span>A4 stående. Kontrollera antal sidor i förhandsgranskningen. Fler rader eller långa anteckningar kan kräva fler sidor.</span></div><main>
- <div class="header"><div class="brand">${logo}<strong>${txt(r.companyName||'PaveTrack')}</strong></div><div class="client">Beställare: ${txt(r.client)}</div></div>
- <h1>OBJEKTSRAPPORT BELÄGGNINGAR</h1><div class="details"><p><b>Objekt:</b> ${txt(r.object)}</p><p><b>Sort:</b> ${txt(r.sort)}</p><p><b>Utförd av:</b> ${txt(r.performedBy||r.ownerName)}</p><p><b>Datum:</b> ${txt((r.updatedAt||'').slice(0,10))}</p></div>
- <h2>Förbesiktningsanteckningar</h2><p class="note">${txt(r.preNotes)}</p>
- <h2>Väder och temperatur</h2><table><thead><tr><th>Datum</th><th>Väder</th><th>Lufttemp °C</th><th>Massatemp °C</th></tr></thead><tbody>${cellRows(r.weather||[],['date','weather','air','mass'],4)}</tbody></table>
- <h2>Anteckningar</h2><p class="note">${txt(r.notes)}</p>
- <h2>Beläggningsarbeten</h2><table><thead><tr><th>Datum</th><th>Sort</th><th>Tjocklek</th><th>Handl./Maskin</th><th>Yta (m²)</th><th>Ton</th><th>Justeringston</th></tr></thead><tbody>${cellRows(r.work||[],['date','sort','thickness','method','area','tons','adjust'],10)}</tbody></table>
- <h2>Utfört enligt kontrollplan</h2><div class="checks">${checks.map((c,i)=>`<div class="check">${i+1}. ${c}<b>${r['check'+(i+1)]?'☑':'☐'}</b></div>`).join('')}</div>
- <h2>Avvikelser från kontrollplan</h2><p class="note long">${txt(r.deviations)}</p><p><b>Åtgärdat:</b> ${r.resolved?'Ja':'Nej'}</p><p class="foot">Upprättad i PaveTrack • ${txt((r.updatedAt||'').slice(0,10))}</p></main></body></html>`;
+ @page{size:A4 portrait;margin:9mm 9mm}
+ *{box-sizing:border-box}html,body{margin:0;padding:0}
+ body{font:9px/1.2 Arial,Helvetica,sans-serif;color:#18251f;background:white}
+ main{width:100%;max-width:192mm;margin:0 auto}
+ .toolbar{background:#edf4f0;padding:12px;display:flex;gap:12px;align-items:center;font-size:12px;margin-bottom:10px}
+ .toolbar button{padding:9px 12px;cursor:pointer}
+ .top{display:grid;grid-template-columns:1fr 1.1fr 28mm;align-items:center;gap:7px;min-height:21mm;margin-bottom:4mm}
+ .brand{display:flex;align-items:center;gap:5px;min-width:0}
+ .brand strong{font-size:15px;line-height:1.05;overflow-wrap:anywhere}
+ .logo{display:block;max-width:45mm;max-height:18mm;object-fit:contain;object-position:left center}
+ .report-title{text-align:center}.report-title h1{font-size:19px;margin:0 0 3px}.report-title p{font-size:9px;margin:0;letter-spacing:.15px}
+ .stamp{border:1px solid #899c91;align-self:stretch;display:flex;flex-direction:column;justify-content:center;font-size:8px}
+ .stamp div{padding:4px 5px;border-bottom:1px solid #899c91}.stamp div:last-child{border:0}
+ .stamp b{display:block;font-size:9px}
+ .details{border:1px solid #889a90;margin-bottom:4mm}
+ .detail-row{display:grid;grid-template-columns:34mm 1fr;border-bottom:1px solid #aab8af;min-height:7mm}
+ .detail-row:last-child{border:0}.detail-row b{padding:5px;border-right:1px solid #aab8af}.detail-row span{padding:5px;overflow-wrap:anywhere}
+ h2{font-size:10px;margin:4mm 0 1.5mm}
+ table{border-collapse:collapse;width:100%;table-layout:fixed;margin:0 0 3mm}
+ th,td{border:1px solid #94a49a;padding:3px 4px;text-align:left;vertical-align:middle;overflow-wrap:anywhere}
+ th{background:#e4ebee;font-size:8px;font-weight:bold;height:7mm}
+ td{height:6.5mm;font-size:8px}
+ tr{break-inside:avoid;page-break-inside:avoid}thead{display:table-header-group}
+ .weather th:nth-child(1){width:19%}.weather th:nth-child(2){width:26%}.weather th:nth-child(3),.weather th:nth-child(4){width:27.5%}
+ .work th:nth-child(1){width:15%}.work th:nth-child(2){width:15%}.work th:nth-child(3){width:14%}.work th:nth-child(4){width:20%}.work th:nth-child(5){width:12%}.work th:nth-child(6){width:11%}.work th:nth-child(7){width:13%}
+ .note{border:1px solid #aab8af;padding:5px;min-height:9mm;white-space:pre-wrap;overflow-wrap:anywhere}
+ .checks{width:100%;border-collapse:collapse}.checks th,.checks td{text-align:center;padding:3px 2px;font-size:8px}
+ .checks td{height:12mm;vertical-align:top}.checks .mark{font-size:12px;line-height:1.3}
+ .deviation{display:grid;grid-template-columns:1fr 27mm;gap:0;border:1px solid #aab8af;min-height:18mm}
+ .deviation .note{border:0;min-height:18mm}.resolved{border-left:1px solid #aab8af;padding:5px}
+ .signature{display:grid;grid-template-columns:1.2fr .65fr 1fr;gap:6mm;margin-top:5mm}
+ .signature div{border-bottom:1px solid #889a90;min-height:10mm;padding:2px 0}
+ .signature b{display:block;margin-bottom:4px}
+ .foot{font-size:7px;color:#65766c;margin-top:3mm}
+ @media print{.toolbar{display:none!important}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}main{max-width:none}}
+ </style></head><body><div class="toolbar"><button onclick="window.print()">Skriv ut / Spara som PDF</button><span>Välj A4 och 100 % skala. Kontrollera sidantalet: långa texter eller fler rader kan kräva en extra sida.</span></div><main>
+ <header class="top"><div class="brand">${logo||`<strong>${txt(r.companyName||'PaveTrack')}</strong>`}</div><div class="report-title"><h1>Egenkontroll</h1><p>OBJEKTSRAPPORT BELÄGGNINGAR</p></div><div class="stamp"><div>Utskriftsdatum<b>${new Date().toLocaleDateString('sv-SE')}</b></div><div>Rapportdatum<b>${date}</b></div></div></header>
+ <section class="details"><div class="detail-row"><b>Beställare</b><span>${txt(r.client)}</span></div><div class="detail-row"><b>Objekt</b><span>${txt(r.object)}</span></div><div class="detail-row"><b>Sort</b><span>${txt(r.sort)}</span></div><div class="detail-row"><b>Förbesiktningsanteckningar</b><span>${txt(r.preNotes)}</span></div></section>
+ <table class="weather"><thead><tr><th>Datum</th><th>Väder</th><th>Lufttemp (°C)</th><th>Massatemp (°C)</th></tr></thead><tbody>${cellRows(r.weather,['date','weather','air','mass'],4)}</tbody></table>
+ <h2>Anteckningar</h2><div class="note">${txt(r.notes)}</div>
+ <h2>Beläggningsarbeten</h2><table class="work"><thead><tr><th>Datum</th><th>Sort</th><th>Tjocklek (mm)</th><th>Handl./Maskin</th><th>Yta (m²)</th><th>Ton</th><th>Justeringston</th></tr></thead><tbody>${cellRows(r.work,['date','sort','thickness','method','area','tons','adjust'],10)}</tbody></table>
+ <h2>Utfört enligt kontrollplan</h2><table class="checks"><thead><tr>${checks.map((c,i)=>`<th>${i+1}. ${c}</th>`).join('')}</tr></thead><tbody><tr>${checks.map((c,i)=>`<td><span class="mark">${r['check'+(i+1)]?'☑':'☐'}</span> ${r['check'+(i+1)]?'OK':'Ej markerad'}</td>`).join('')}</tr></tbody></table>
+ <h2>Avvikelser från kontrollplan</h2><div class="deviation"><div class="note">${txt(r.deviations)}</div><div class="resolved"><b>Åtgärdat</b><p>${r.resolved?'☑ Ja':'☐ Ja'}</p><p>${r.resolved?'☐ Nej':'☑ Nej'}</p></div></div>
+ <footer class="signature"><div><b>Utförd av</b>${txt(r.performedBy||r.ownerName)}</div><div><b>Datum</b>${date}</div><div><b>Signatur</b></div></footer><p class="foot">Upprättad i PaveTrack</p>
+ </main></body></html>`;
 }
 function egenDownload(r){const blob=new Blob([egenDocument(r)],{type:'text/html;charset=utf-8'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Egenkontroll-'+(r.object||'rapport').replace(/[^a-zA-Z0-9åäöÅÄÖ_-]/g,'_').slice(0,45)+'.html';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}
 function egenPrint(r){const win=window.open('','_blank');if(!win){toast('Tillåt popupfönster för att skriva ut.');return}win.document.open();win.document.write(egenDocument(r));win.document.close();win.focus();setTimeout(()=>win.print(),350)}
