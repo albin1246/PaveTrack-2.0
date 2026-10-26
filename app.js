@@ -393,7 +393,7 @@ async function egenStore(){
 function egenRenderList(){
  const all=[...egenCloudRecords].sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
  $('egenReportCount').textContent=all.length===0?'':`${all.length} ${all.length===1?'rapport':'rapporter'}`;
- $('egenSavedList').innerHTML=all.map(r=>`<article class="user egen-report-row"><div class="egen-report-details"><h3>${esc(r.object||'Utan objektnamn')}</h3><div class="meta">${esc(r.client||'Ingen beställare')} · ${esc((r.updatedAt||'').slice(0,10))} · ${esc(r.ownerName||'')}</div></div><div class="actions"><button type="button" class="smallbtn secondary" data-egen-open="${esc(r.id)}">Öppna</button><button type="button" class="smallbtn secondary" data-egen-print="${esc(r.id)}">Skriv ut</button><button type="button" class="smallbtn secondary" data-egen-download="${esc(r.id)}">Ladda ner</button><button type="button" class="smallbtn ghost" data-egen-delete="${esc(r.id)}">Radera</button></div></article>`).join('');
+ $('egenSavedList').innerHTML=all.map(r=>`<article class="user egen-report-row"><div class="egen-report-details"><h3>${esc(r.object||'Utan objektnamn')}</h3><div class="meta">${esc(r.client||'Ingen beställare')} · ${esc((r.updatedAt||'').slice(0,10))} · ${esc(r.ownerName||'')}</div></div><div class="actions"><button type="button" class="smallbtn secondary" data-egen-open="${esc(r.id)}">Öppna</button><button type="button" class="smallbtn secondary" data-egen-print="${esc(r.id)}">Skriv ut</button><button type="button" class="smallbtn secondary" data-egen-download="${esc(r.id)}">Ladda ner PDF</button><button type="button" class="smallbtn ghost" data-egen-delete="${esc(r.id)}">Radera</button></div></article>`).join('');
 }
 function egenDocument(r){
  const txt=v=>esc(v??'');
@@ -449,8 +449,91 @@ function egenDocument(r){
  <footer class="signature"><div><b>Utförd av</b>${txt(r.performedBy||r.ownerName)}</div><div><b>Datum</b>${date}</div><div><b>Signatur</b>${r.signature&&/^data:image\/png;base64,[a-zA-Z0-9+/=]+$/.test(r.signature)?`<img src="${r.signature}" alt="Signatur">`:''}</div></footer><p class="foot">Upprättad i PaveTrack</p>
  </main></body></html>`;
 }
-function egenDownload(r){const blob=new Blob([egenDocument(r)],{type:'text/html;charset=utf-8'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Egenkontroll-'+(r.object||'rapport').replace(/[^a-zA-Z0-9åäöÅÄÖ_-]/g,'_').slice(0,45)+'.html';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}
-function egenPrint(r){const win=window.open('','_blank');if(!win){toast('Tillåt popupfönster för att skriva ut.');return}win.document.open();win.document.write(egenDocument(r));win.document.close();win.focus();setTimeout(()=>win.print(),350)}
+let egenPdfBusy=false;
+const egenIsIOS=()=>/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const egenPdfFilename=r=>'Egenkontroll-'+(r.object||'rapport').replace(/[^a-zA-Z0-9åäöÅÄÖ_-]/g,'_').slice(0,45)+'.pdf';
+async function egenCreatePdf(r){
+ if(typeof html2pdf!=='function')throw new Error('PDF-biblioteket kunde inte laddas. Kontrollera internetanslutningen.');
+ let frame;
+ try{
+  frame=document.createElement('iframe');
+  frame.title='PDF-rendering';frame.setAttribute('aria-hidden','true');
+  Object.assign(frame.style,{position:'fixed',left:'-12000px',top:'0',width:'794px',height:'1123px',border:'0',pointerEvents:'none'});
+  document.body.appendChild(frame);
+  const doc=frame.contentDocument;
+  doc.open();doc.write(egenDocument(r));doc.close();
+  await new Promise(resolve=>setTimeout(resolve,180));
+  await Promise.all(Array.from(doc.images).map(img=>img.complete?Promise.resolve():new Promise(resolve=>{
+   img.onload=resolve;img.onerror=resolve;setTimeout(resolve,4000)
+  })));
+  const main=doc.querySelector('main');
+  if(!main)throw new Error('Rapporten kunde inte läsas.');
+  main.style.width='192mm';main.style.maxWidth='192mm';
+  const worker=html2pdf().set({
+   margin:[9,9,9,9],filename:egenPdfFilename(r),
+   image:{type:'jpeg',quality:0.97},
+   html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff',scrollX:0,scrollY:0,windowWidth:794},
+   jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},
+   pagebreak:{mode:['css','legacy'],avoid:['tr','.signature','.deviation']}
+  }).from(main).toPdf();
+  const pdf=await worker.get('pdf');
+  const blob=pdf.output('blob');
+  if(blob.type!=='application/pdf'||blob.size<100)throw new Error('Den skapade PDF-filen är tom eller felaktig.');
+  return blob;
+ }finally{frame?.remove()}
+}
+async function egenPdfAction(r,action){
+ if(egenPdfBusy){toast('PDF skapas redan. Vänta en stund.');return}
+ egenPdfBusy=true;
+ const ios=egenIsIOS();
+ // Open a blank tab synchronously on desktop to avoid Safari/browser popup blocking after async rendering.
+ // On iOS the native share sheet is preferred, offering both Print and Save to Files.
+ let preview=null;
+ if(action==='print'&&!ios){
+  preview=window.open('','_blank');
+  if(preview){preview.document.title='Förbereder PDF…';preview.document.body.textContent='Skapar utskriftsklar PDF…'}
+ }
+ const button=$('egenDownload'),printButton=$('egenPrint');
+ if(button)button.disabled=true;if(printButton)printButton.disabled=true;
+ try{
+  toast(action==='print'?'Förbereder utskrift…':'Skapar PDF…');
+  const blob=await egenCreatePdf(r);
+  const filename=egenPdfFilename(r);
+  const file=new File([blob],filename,{type:'application/pdf'});
+  const canShare=!!(navigator.share&&navigator.canShare?.({files:[file]}));
+  if(ios&&canShare){
+   // iOS share sheet: Save to Files for downloads, Print for printing.
+   await navigator.share({files:[file],title:filename});
+   return;
+  }
+  const url=URL.createObjectURL(blob);
+  if(action==='download'){
+   const a=document.createElement('a');
+   a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+   if(ios)toast('Om filen visas i Safari, välj Dela → Spara i Filer.');
+  }else{
+   if(preview){
+    preview.location.replace(url);
+    toast('PDF öppnad. Använd webbläsarens Skriv ut (Ctrl+P).');
+   }else{
+    // If popups are blocked, present a visible user-initiated link instead.
+    const link=$('egenPdfPrintLink');
+    link.href=url;link.hidden=false;link.textContent='Öppna utskriftsklar PDF';
+    toast('Tryck på ”Öppna utskriftsklar PDF” och välj Skriv ut via Dela.');
+   }
+  }
+  // Retain the blob URL long enough for iOS preview and printing.
+  setTimeout(()=>URL.revokeObjectURL(url),300000);
+ }catch(err){
+  if(preview&&!preview.closed)preview.close();
+  if(err?.name!=='AbortError'){console.error('PDF-fel',err);toast('PDF kunde inte skapas: '+(err.message||err))}
+ }finally{
+  egenPdfBusy=false;
+  if(button)button.disabled=false;if(printButton)printButton.disabled=false;
+ }
+}
+function egenDownload(r){return egenPdfAction(r,'download')}
+function egenPrint(r){return egenPdfAction(r,'print')}
 $('egenForm').onsubmit=e=>{e.preventDefault();egenStore()};
 $('egenAddWeather').onclick=()=>egenAddRow('weather');$('egenAddWork').onclick=()=>egenAddRow('work');
 $('egenForm').addEventListener('click',e=>{const b=e.target.closest('[data-egen-remove]');if(b)b.closest('tr').remove()});
