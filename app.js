@@ -453,7 +453,9 @@ let egenPdfBusy=false;
 const egenIsIOS=()=>/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const egenPdfFilename=r=>'Egenkontroll-'+(r.object||'rapport').replace(/[^a-zA-Z0-9åäöÅÄÖ_-]/g,'_').slice(0,45)+'.pdf';
 async function egenCreatePdf(r){
- if(typeof html2canvas!=='function'||typeof window.jspdf?.jsPDF!=='function')throw new Error('PDF-biblioteket kunde inte laddas.');
+ if(typeof window.html2canvas!=='function'||typeof window.jspdf?.jsPDF!=='function'){
+  throw new Error('PDF-biblioteken kunde inte laddas. Kontrollera anslutningen och ladda om sidan.');
+ }
  let frame;
  try{
   // Render in a same-origin document INSIDE the viewport. Capturing an offscreen
