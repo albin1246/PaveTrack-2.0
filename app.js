@@ -312,8 +312,6 @@ $('egenLogoFile').onchange=async e=>{
   egenSetLogoChoice('custom');toast('Logotyp infogad');
  }catch(err){toast('Kunde inte läsa logotyp: '+err.message)}finally{if(url)URL.revokeObjectURL(url)}
 };
-const egenRead=()=>{try{const data=JSON.parse(localStorage.getItem(egenKey())||'[]');return Array.isArray(data)?data:[]}catch{return []}};
-const egenSave=records=>localStorage.setItem(egenKey(),JSON.stringify(records));
 const egenField=(type,name,placeholder='')=>`<input type="${type}" data-field="${name}" ${placeholder?`placeholder="${placeholder}"`:''} ${type==='number'?'step="any"':''}>`;
 function egenAddRow(kind,data={}){
  const target=$(kind==='weather'?'egenWeatherRows':'egenWorkRows');
@@ -394,28 +392,9 @@ async function egenStore(){
 }
 function egenRenderList(){
  const all=[...egenCloudRecords].sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
- $('egenSavedList').innerHTML=all.map(r=>`<article class="user"><div><h3>${esc(r.object||'Utan objektnamn')}</h3><div class="meta">${esc(r.client||'Ingen beställare')} • ${esc((r.updatedAt||'').slice(0,10))} • ${esc(r.ownerName||'')}</div></div><div class="actions"><button type="button" class="smallbtn secondary" data-egen-open="${esc(r.id)}">Öppna</button><button type="button" class="smallbtn secondary" data-egen-print="${esc(r.id)}">Skriv ut</button><button type="button" class="smallbtn secondary" data-egen-download="${esc(r.id)}">Ladda ner</button><button type="button" class="smallbtn ghost" data-egen-delete="${esc(r.id)}">Radera</button></div></article>`).join('')||(egenCloudReady?'<p>Inga egenkontroller sparade i Firebase ännu.</p>':'<p>Hämtar egenkontroller från Firebase…</p>');
- const local=egenRead();$('egenMigrate').hidden=!local.length;
- $('egenLocalCount').textContent=local.length?`${local.length} äldre lokalt sparade rapporter finns på denna enhet. Du kan föra över dem till Firebase.`:'';
+ $('egenReportCount').textContent=all.length===0?'':`${all.length} ${all.length===1?'rapport':'rapporter'}`;
+ $('egenSavedList').innerHTML=all.map(r=>`<article class="user egen-report-row"><div class="egen-report-details"><h3>${esc(r.object||'Utan objektnamn')}</h3><div class="meta">${esc(r.client||'Ingen beställare')} · ${esc((r.updatedAt||'').slice(0,10))} · ${esc(r.ownerName||'')}</div></div><div class="actions"><button type="button" class="smallbtn secondary" data-egen-open="${esc(r.id)}">Öppna</button><button type="button" class="smallbtn secondary" data-egen-print="${esc(r.id)}">Skriv ut</button><button type="button" class="smallbtn secondary" data-egen-download="${esc(r.id)}">Ladda ner</button><button type="button" class="smallbtn ghost" data-egen-delete="${esc(r.id)}">Radera</button></div></article>`).join('');
 }
-$('egenMigrate').onclick=async()=>{
- if(!egenAllowed()||!egenCloudReady){toast('Vänta tills Firebase har laddat klart.');return}
- const local=egenRead();if(!local.length)return;
- if(!confirm(`Föra över ${local.length} lokala egenkontroller till Firebase? Originalen behålls i webbläsaren.`))return;
- let success=0,fail=0;
- for(const old of local){
-  const existing=egenCloudRecords.find(r=>r.id===old.id);
-  if(existing){fail++;continue}
-  const payload={...old,id:old.id||crypto.randomUUID()};
-  if(new Blob([JSON.stringify(payload)]).size>800000){fail++;continue}
-  try{
-   await setDoc(doc(egenCollection(),payload.id),{ownerUid:me.uid,ownerName:profile?.name||me.email||'',payload,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedBy:me.uid});
-   success++;
-  }catch(e){console.error('Migrering misslyckades',e);fail++}
- }
- $('egenStatus').textContent=`Överförda: ${success}. Ej överförda (t.ex. redan finns): ${fail}. Lokala original finns kvar.`;
- toast(`Överförda till Firebase: ${success}`);
-};
 function egenDocument(r){
  const txt=v=>esc(v??'');
  const cellRows=(rows,keys,min=0)=>{const items=[...(rows||[])];while(items.length<min)items.push({});return items.map(row=>'<tr>'+keys.map(k=>`<td>${txt(row[k])||'&nbsp;'}</td>`).join('')+'</tr>').join('')};
@@ -478,4 +457,5 @@ $('egenForm').addEventListener('click',e=>{const b=e.target.closest('[data-egen-
 $('egenNew').onclick=()=>{egenActiveId=null;egenFill();$('egenStatus').textContent='Ny egenkontroll';};
 $('egenPrint').onclick=()=>egenPrint(egenCurrent());$('egenDownload').onclick=()=>egenDownload(egenCurrent());
 $('egenSavedList').addEventListener('click',async e=>{const b=e.target.closest('[data-egen-open],[data-egen-print],[data-egen-download],[data-egen-delete]');if(!b)return;const id=b.dataset.egenOpen||b.dataset.egenPrint||b.dataset.egenDownload||b.dataset.egenDelete,r=egenCloudRecords.find(x=>x.id===id);if(!r||!egenAllowed())return;if(b.dataset.egenOpen){egenActiveId=id;egenFill(r);$('egenForm').scrollIntoView({behavior:'smooth'})}else if(b.dataset.egenPrint)egenPrint(r);else if(b.dataset.egenDownload)egenDownload(r);else if(b.dataset.egenDelete&&confirm('Radera denna egenkontroll från Firebase?')){try{await deleteDoc(doc(egenCollection(),id));if(egenActiveId===id){egenActiveId=null;egenFill()}toast('Egenkontroll raderad')}catch(err){toast('Kunde inte radera: '+err.message)}}});
+try{localStorage.removeItem(egenKey())}catch(e){console.warn('Kunde inte rensa äldre lokala egenkontroller',e)}
 egenFill();egenRenderList();
