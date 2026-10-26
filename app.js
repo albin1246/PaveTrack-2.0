@@ -507,54 +507,56 @@ async function egenCreatePdf(r){
   return blob;
  }finally{frame?.remove()}
 }
+function egenPdfLoading(visible,label='Skapar PDF…'){
+ const overlay=$('egenPdfLoading');
+ if(!overlay)return;
+ $('egenPdfLoadingText').textContent=label;
+ overlay.hidden=!visible;
+ overlay.setAttribute('aria-hidden',String(!visible));
+}
 async function egenPdfAction(r,action){
  if(egenPdfBusy){toast('PDF skapas redan. Vänta en stund.');return}
  egenPdfBusy=true;
  const ios=egenIsIOS();
- // Open a blank tab synchronously on desktop to avoid Safari/browser popup blocking after async rendering.
- // On iOS the native share sheet is preferred, offering both Print and Save to Files.
- let preview=null;
- if(action==='print'&&!ios){
-  preview=window.open('','_blank');
-  if(preview){preview.document.title='Förbereder PDF…';preview.document.body.textContent='Skapar utskriftsklar PDF…'}
- }
  const button=$('egenDownload'),printButton=$('egenPrint');
- if(button)button.disabled=true;if(printButton)printButton.disabled=true;
+ if(button)button.disabled=true;
+ if(printButton)printButton.disabled=true;
+ egenPdfLoading(true,action==='print'?'Förbereder utskriftsklar PDF…':'Skapar PDF…');
  try{
-  toast(action==='print'?'Förbereder utskrift…':'Skapar PDF…');
+  // Render while the current page remains visible: Safari and desktop browsers
+  // may pause canvas rendering if the page loses focus to a blank new tab.
   const blob=await egenCreatePdf(r);
   const filename=egenPdfFilename(r);
   const file=new File([blob],filename,{type:'application/pdf'});
   const canShare=!!(navigator.share&&navigator.canShare?.({files:[file]}));
+  egenPdfLoading(false);
   if(ios&&canShare){
-   // iOS share sheet: Save to Files for downloads, Print for printing.
+   // Safari/iPhone: native share sheet includes Print and Save to Files.
    await navigator.share({files:[file],title:filename});
    return;
   }
   const url=URL.createObjectURL(blob);
   if(action==='download'){
-   const a=document.createElement('a');
-   a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
-   if(ios)toast('Om filen visas i Safari, välj Dela → Spara i Filer.');
+   const a=document.createElement('a');a.href=url;a.download=filename;
+   document.body.appendChild(a);a.click();a.remove();
+   if(ios)toast('Välj Dela → Spara i Filer om PDF-filen visas i Safari.');
+   setTimeout(()=>URL.revokeObjectURL(url),300000);
   }else{
-   if(preview){
-    preview.location.replace(url);
-    toast('PDF öppnad. Använd webbläsarens Skriv ut (Ctrl+P).');
-   }else{
-    // If popups are blocked, present a visible user-initiated link instead.
-    const link=$('egenPdfPrintLink');
-    link.href=url;link.hidden=false;link.textContent='Öppna utskriftsklar PDF';
-    toast('Tryck på ”Öppna utskriftsklar PDF” och välj Skriv ut via Dela.');
-   }
+   // Open automatically ONLY once rendering has finished. Navigating the
+   // current tab avoids popup blockers after an asynchronous operation.
+   // Browser Back returns to PaveTrack, preserving the application state.
+   window.location.assign(url);
   }
-  // Retain the blob URL long enough for iOS preview and printing.
-  setTimeout(()=>URL.revokeObjectURL(url),300000);
  }catch(err){
-  if(preview&&!preview.closed)preview.close();
-  if(err?.name!=='AbortError'){console.error('PDF-fel',err);toast('PDF kunde inte skapas: '+(err.message||err))}
+  if(err?.name!=='AbortError'){
+   console.error('PDF-fel',err);
+   toast('PDF kunde inte skapas: '+(err.message||err));
+  }
  }finally{
+  egenPdfLoading(false);
   egenPdfBusy=false;
-  if(button)button.disabled=false;if(printButton)printButton.disabled=false;
+  if(button)button.disabled=false;
+  if(printButton)printButton.disabled=false;
  }
 }
 function egenDownload(r){return egenPdfAction(r,'download')}
