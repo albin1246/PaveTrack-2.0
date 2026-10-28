@@ -138,7 +138,56 @@ function historyTeamMatches(j){
  return true;
 }
 function renderJobs(){ensureHistoryTeamFilter();const now=dateLocal(),todays=jobs.filter(j=>j.date===now);$('todayCount').textContent=todays.length;$('todayTons').textContent=fmt(todays.reduce((s,j)=>s+j.used,0))+' ton';$('todayWaste').textContent=fmt(todays.reduce((s,j)=>s+j.waste,0))+' ton';$('recentJobs').innerHTML=jobs.slice(0,10).map(renderJob).join('')||'<p>Inga jobb registrerade ännu.</p>';const q=$('search').value.trim().toLowerCase(),d=$('filterDate').value;const invoiceFilter=$('invoiceFilter').value;const filtered=jobs.filter(j=>historyTeamMatches(j)&&(invoiceFilter==='all'||(invoiceFilter==='done'?!!j.invoiced:!j.invoiced))&&(!d||j.date===d)&&(!q||[j.customer,j.littra,j.location,j.ownerName,j.notes,j.asphaltType,j.teamName].some(x=>String(x||'').toLowerCase().includes(q))));$('historyJobs').innerHTML=filtered.map(renderJob).join('')||'<p>Inga jobb matchar sökningen.</p>';$('allCount').textContent=jobs.length;$('allArea').textContent=fmt(jobs.reduce((s,j)=>s+j.area,0));$('allUsed').textContent=fmt(jobs.reduce((s,j)=>s+j.used,0));$('allWaste').textContent=fmt(jobs.reduce((s,j)=>s+j.waste,0));$('statsScope').textContent=isAdmin()?tr('Alla användares jobb'):tr('Dina registrerade jobb')}
-function renderUsers(){const pending=users.filter(u=>u.status==='pending');const rest=users.filter(u=>u.status!=='pending');$('usersList').innerHTML=[...pending,...rest].map(u=>{const actions=[];if(u.status==='pending'){actions.push(`<button class="smallbtn primary" data-user="${esc(u.id)}" data-status="approved">${tr('Godkänn')}</button>`,`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-status="rejected">${tr('Neka')}</button>`)}else if(u.status==='approved'&&u.id!==me.uid){actions.push(`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-status="blocked">${tr('Spärra')}</button>`);if(isCompanySuperadmin()&&u.role!=='superadmin')actions.push(`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-role="${u.role==='admin'?'user':'admin'}">${u.role==='admin'?tr('Ta bort admin'):tr('Gör till admin')}</button>`)}else if(u.status==='blocked')actions.push(`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-status="approved">${tr('Återaktivera')}</button>`);return `<article class="user"><div><h3>${esc(u.name||u.email)}</h3><div class="meta">${esc(u.email)} • ${esc(u.status)} • ${esc(u.role)}</div></div><div class="actions">${actions.join('')}</div></article>`}).join('')||'<p>Inga användare hittades.</p>'}
+// Presence uses one short-lived heartbeat per open tab/device.
+const PRESENCE_TTL=120000;
+let presenceRows=[],presenceReady=false,presenceStop=null;
+function presenceIsActive(uid,now=Date.now()){
+ return presenceReady&&presenceRows.some(p=>p.uid===uid&&p.active===true&&p.seenAt?.toMillis&&now-p.seenAt.toMillis()>=-30000&&now-p.seenAt.toMillis()<PRESENCE_TTL);
+}
+function presenceBadge(uid){
+ const active=presenceIsActive(uid),label=language==='en'?(active?'Active':'Inactive'):(active?'Aktiv':'Ej aktiv');
+ return `<span data-presence-user="${esc(uid)}" style="display:${presenceReady?'inline-flex':'none'};align-items:center;gap:6px;font-size:12px;font-weight:500;margin-left:9px" ${presenceReady?'':'hidden'}><span aria-hidden="true" style="display:inline-block;width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:${active?'#32b66b':'#8a9590'}"></span><span>${label}</span></span>`;
+}
+function presenceRefreshBadges(){
+ const list=$('usersList');if(!list)return;
+ list.querySelectorAll('[data-presence-user]').forEach(el=>{el.outerHTML=presenceBadge(el.dataset.presenceUser)});
+}
+function startPresence(){
+ presenceStop?.();presenceRows=[];presenceReady=false;
+ if(!me||!tenantId()||profile?.status!=='approved'||!companyApproved)return;
+ const uid=me.uid,cid=tenantId(),sessionId=crypto.randomUUID();
+ const sessions=collection(db,'companies',cid,'presence');
+ const ref=doc(sessions,sessionId);let stopped=false,writing=false,writeAgain=false;
+ const publish=async()=>{
+  if(stopped||!navigator.onLine)return;
+  if(writing){writeAgain=true;return}
+  writing=true;
+  try{await setDoc(ref,{uid,active:document.visibilityState==='visible',seenAt:serverTimestamp()})}
+  catch(err){console.warn('Aktivitetsstatus kunde inte uppdateras:',err.code||err.message)}
+  finally{writing=false;if(writeAgain){writeAgain=false;publish()}}
+ };
+ const onVisibility=()=>{publish();presenceRefreshBadges()};
+ const onOffline=()=>{presenceReady=false;presenceRefreshBadges()};
+ const onPageHide=()=>{if(navigator.onLine)setDoc(ref,{uid,active:false,seenAt:serverTimestamp()}).catch(()=>{})};
+ document.addEventListener('visibilitychange',onVisibility);
+ window.addEventListener('online',publish);window.addEventListener('offline',onOffline);window.addEventListener('pagehide',onPageHide);
+ const heartbeat=setInterval(publish,45000);
+ const refresh=setInterval(presenceRefreshBadges,5000);
+ let unsub=()=>{};
+ if(isAdmin())unsub=onSnapshot(sessions,{includeMetadataChanges:true},snapshot=>{
+  presenceReady=navigator.onLine&&!snapshot.metadata.fromCache;
+  presenceRows=snapshot.docs.map(d=>d.data());presenceRefreshBadges();
+ },err=>{presenceReady=false;presenceRefreshBadges();toast('Aktivitetsstatus kunde inte hämtas. Kontrollera Firebase-reglerna.');console.warn('Aktivitetsstatus:',err.code||err.message)});
+ publish();
+ const stop=()=>{
+  if(stopped)return;stopped=true;clearInterval(heartbeat);clearInterval(refresh);unsub();
+  document.removeEventListener('visibilitychange',onVisibility);window.removeEventListener('online',publish);window.removeEventListener('offline',onOffline);window.removeEventListener('pagehide',onPageHide);
+  if(navigator.onLine)deleteDoc(ref).catch(()=>{});
+  presenceRows=[];presenceReady=false;if(presenceStop===stop)presenceStop=null;
+ };
+ presenceStop=stop;unsubs.push(stop);
+}
+function renderUsers(){const pending=users.filter(u=>u.status==='pending');const rest=users.filter(u=>u.status!=='pending');$('usersList').innerHTML=[...pending,...rest].map(u=>{const actions=[];if(u.status==='pending'){actions.push(`<button class="smallbtn primary" data-user="${esc(u.id)}" data-status="approved">${tr('Godkänn')}</button>`,`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-status="rejected">${tr('Neka')}</button>`)}else if(u.status==='approved'&&u.id!==me.uid){actions.push(`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-status="blocked">${tr('Spärra')}</button>`);if(isCompanySuperadmin()&&u.role!=='superadmin')actions.push(`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-role="${u.role==='admin'?'user':'admin'}">${u.role==='admin'?tr('Ta bort admin'):tr('Gör till admin')}</button>`)}else if(u.status==='blocked')actions.push(`<button class="smallbtn secondary" data-user="${esc(u.id)}" data-status="approved">${tr('Återaktivera')}</button>`);return `<article class="user"><div><h3>${esc(u.name||u.email)}${presenceBadge(u.id)}</h3><div class="meta">${esc(u.email)} • ${esc(u.status)} • ${esc(u.role)}</div></div><div class="actions">${actions.join('')}</div></article>`}).join('')||'<p>Inga användare hittades.</p>'}
 function listenData(){const q=isAdmin()?query(companyJobs(tenantId())):query(companyJobs(tenantId()),where('ownerUid','==',me.uid));unsubs.push(onSnapshot(q,s=>{jobs=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>b.date.localeCompare(a.date)||(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));renderJobs()},e=>toast(tr('Kunde inte läsa jobb: ')+e.message)));listenTeams();if(isAdmin())unsubs.push(onSnapshot(companyUsers(tenantId()),s=>{users=s.docs.map(d=>({id:d.id,...d.data()}));renderUsers()},e=>toast(tr('Kunde inte läsa användare: ')+e.message)))}
 function showWorkSetup(){
  $('ownerModeSwitch').classList.remove('hidden');
@@ -251,7 +300,7 @@ async function loadProfile(){
   $('roleBadge').textContent=companyRole==='superadmin'?'SUPERADMIN':companyRole==='admin'?'ADMIN':'ANVÄNDARE';
   view('jobs');
  }
- if(tenantId()&&profile.status==='approved'&&companyApproved)listenData();
+ if(tenantId()&&profile.status==='approved'&&companyApproved){listenData();startPresence()}
 }
 $('repairJoinForm').onsubmit=async e=>{e.preventDefault();if(!me)return;const button=$('repairSubmit');button.disabled=true;$('repairMessage').textContent='';try{await finishEmployeeJoin(me,$('repairCode').value);$('repairMessage').textContent='Anslutningen är sparad. Vänta på administratörens godkännande.';await loadProfile()}catch(err){$('repairMessage').textContent='Kunde inte ansluta: '+err.message;show('repairJoin',true)}finally{button.disabled=false}};
 $('ownerPlatformButton').onclick=()=>setOwnerMode(false);
