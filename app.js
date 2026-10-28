@@ -1,7 +1,8 @@
+import {createTidplan} from './tidplan.js?v=20261028-1';
 import {getFunctions,httpsCallable} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js';
 import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,setPersistence,browserLocalPersistence,browserSessionPersistence,signOut,updateProfile} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
-import {getFirestore,doc,setDoc,getDoc,collection,query,where,onSnapshot,addDoc,updateDoc,deleteDoc,serverTimestamp,getDocs,writeBatch} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import {getFirestore,doc,setDoc,getDoc,collection,query,where,onSnapshot,addDoc,updateDoc,deleteDoc,serverTimestamp,getDocs,writeBatch,runTransaction} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 const $=id=>document.getElementById(id), show=(id,yes=true)=>{const el=$(id);if(el)el.classList.toggle('hidden',!yes);};
 // All visible copy is translated client-side. User-entered content remains unchanged.
 const translations={
@@ -10,7 +11,7 @@ const translations={
 'Välkommen till PaveTrack':'Welcome to PaveTrack','Logga in eller skapa ett konto. Nya konton måste godkännas.':'Sign in or create an account. New accounts must be approved.',
 'Logga in':'Sign in','Skapa konto':'Create account','Namn':'Name','E-post':'Email','Lösenord':'Password',
 'Kontot väntar på godkännande':'Account awaiting approval','En administratör behöver godkänna ditt konto innan du kan registrera jobb.':'An administrator must approve your account before you can register jobs.',
-'Kontrollera status':'Check status','Arbetsöversikt':'Work overview','Jobb':'Jobs','Historik':'History','Statistik':'Statistics','Användare':'Users','Egenkontroll':'Self-inspection',
+'Kontrollera status':'Check status','Arbetsöversikt':'Work overview','Jobb':'Jobs','Tidplan':'Schedule','Historik':'History','Statistik':'Statistics','Användare':'Users','Egenkontroll':'Self-inspection',
 'Jobb idag':'Jobs today','Använt idag':'Used today','Överblivet idag':'Left over today','Nytt asfaltjobb':'New asphalt job',
 'AUTOSPARAS I MOLNET':'SAVED TO THE CLOUD','Datum':'Date','Kund / beställare':'Customer / client','Littranummer':'Job reference number',
 '(valfritt)':'(optional)','Arbetsplats':'Work site','Yta (m²)':'Area (m²)','Använd asfalt (ton)':'Asphalt used (tons)',
@@ -97,9 +98,9 @@ const inviteRef=code=>doc(db,'inviteCodes',code);
 const tenantId=()=>profile?.companyId;
 
 function toast(t){$('toast').textContent=t;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',3800)}
-function resetSubs(){unsubs.forEach(f=>f());unsubs=[];jobs=[];users=[];companies=[];teams=[];trashEntries=[]}
+function resetSubs(){tidplan.stop();unsubs.forEach(f=>f());unsubs=[];jobs=[];users=[];companies=[];teams=[];trashEntries=[]}
 function page(id){['auth','pending','dashboard','config'].forEach(k=>show(k,k===id));show('logout',id!=='auth'&&id!=='config')}
-function view(name){if(name==='trash'&&!platformOwner())return;if(name==='egenkontroll'&&!isAdmin()){toast('Endast administratörer har tillgång till egenkontroller.');return}document.querySelectorAll('.view').forEach(e=>e.classList.toggle('hidden',e.id!==name+'View'));document.querySelectorAll('#nav button').forEach(e=>e.classList.toggle('active',e.dataset.view===name))}
+function view(name){if(name==='tidplan'){if(!tenantId()||profile?.status!=='approved'||!companyApproved)return;tidplan.onView()}if(name==='trash'&&!platformOwner())return;if(name==='egenkontroll'&&!isAdmin()){toast('Endast administratörer har tillgång till egenkontroller.');return}document.querySelectorAll('.view').forEach(e=>e.classList.toggle('hidden',e.id!==name+'View'));document.querySelectorAll('#nav button').forEach(e=>e.classList.toggle('active',e.dataset.view===name))}
 function isAdmin(){return !!tenantId() && (['admin','superadmin'].includes(companyRole) || (platformOwner() && verifiedOwnCompany));}
 function isCompanySuperadmin(){return companyRole==='superadmin' || (platformOwner() && verifiedOwnCompany);}
 function resetForm(){$('jobForm').reset();$('jobId').value='';$('jobDate').value=dateLocal();$('startTime').value='';$('endTime').value='';updateDuration();$('jobTeam').value=profile?.teamId||'';$('formTitle').textContent=tr('Nytt asfaltjobb');show('cancelEdit',false)}
@@ -192,7 +193,7 @@ function listenData(){const q=isAdmin()?query(companyJobs(tenantId())):query(com
 function showWorkSetup(){
  $('ownerModeSwitch').classList.remove('hidden');
  $('ownerWorkButton').classList.add('active');$('ownerPlatformButton').classList.remove('active');
- show('companiesNav',false);show('trashNav',false);for(const id of ['jobs','history','stats','egenkontroll'])show(id+'Nav',false);show('usersNav',false);
+ show('companiesNav',false);show('trashNav',false);for(const id of ['jobs','tidplan','history','stats','egenkontroll'])show(id+'Nav',false);show('usersNav',false);
  $('roleBadge').textContent='ARBETSLÄGE';
  view('jobs');
  $('jobsView').classList.remove('hidden');
@@ -206,7 +207,7 @@ function setOwnerMode(work){
  $('ownerWorkButton').classList.toggle('active',ownerWorkMode);
  $('ownerPlatformButton').classList.toggle('active',!ownerWorkMode);
  show('companiesNav',!ownerWorkMode);show('trashNav',!ownerWorkMode);
- for(const id of ['jobs','history','stats'])show(id+'Nav',ownerWorkMode);
+ for(const id of ['jobs','tidplan','history','stats'])show(id+'Nav',ownerWorkMode);
  show('egenkontrollNav',ownerWorkMode&&ownerWorkAvailable&&isAdmin());
  show('usersNav',ownerWorkMode&&ownerWorkAvailable&&isAdmin());
  show('teamAdmin',ownerWorkMode&&isAdmin());
@@ -295,12 +296,12 @@ async function loadProfile(){
   if(!ownerWorkAvailable)ownerWorkMode=false;
   setOwnerMode(ownerWorkMode);
  }else{
-  for(const id of ['jobs','history','stats'])show(id+'Nav');
+  for(const id of ['jobs','tidplan','history','stats'])show(id+'Nav');
   show('egenkontrollNav',isAdmin());
   $('roleBadge').textContent=companyRole==='superadmin'?'SUPERADMIN':companyRole==='admin'?'ADMIN':'ANVÄNDARE';
   view('jobs');
  }
- if(tenantId()&&profile.status==='approved'&&companyApproved){listenData();startPresence()}
+ if(tenantId()&&profile.status==='approved'&&companyApproved){listenData();startPresence();tidplan.start()}
 }
 $('repairJoinForm').onsubmit=async e=>{e.preventDefault();if(!me)return;const button=$('repairSubmit');button.disabled=true;$('repairMessage').textContent='';try{await finishEmployeeJoin(me,$('repairCode').value);$('repairMessage').textContent='Anslutningen är sparad. Vänta på administratörens godkännande.';await loadProfile()}catch(err){$('repairMessage').textContent='Kunde inte ansluta: '+err.message;show('repairJoin',true)}finally{button.disabled=false}};
 $('ownerPlatformButton').onclick=()=>setOwnerMode(false);
@@ -328,6 +329,10 @@ $('jobForm').onsubmit=async e=>{e.preventDefault();if(profile?.status!=='approve
 document.addEventListener('change',async e=>{const cb=e.target.closest('[data-invoice]');if(!cb)return;if(!isAdmin()){cb.checked=!cb.checked;return}cb.disabled=true;try{await updateDoc(doc(companyJobs(tenantId()),cb.dataset.invoice),{invoiced:cb.checked,invoicedAt:cb.checked?serverTimestamp():null,invoicedBy:cb.checked?me.uid:'',updatedAt:serverTimestamp(),updatedBy:me.uid});toast(cb.checked?'Jobbet markerat som fakturerat':'Faktureringen avmarkerad')}catch(err){cb.checked=!cb.checked;toast('Kunde inte uppdatera fakturastatus: '+err.message)}finally{cb.disabled=false}});
 document.addEventListener('click',async e=>{const edit=e.target.closest('[data-edit]'),del=e.target.closest('[data-delete]'),usr=e.target.closest('[data-user]');if(edit){const j=jobs.find(x=>x.id===edit.dataset.edit);if(!j)return;for(const f of ['date','customer','littra','location','area','used','waste','notes','asphaltType'])$(f==='date'?'jobDate':f).value=j[f]??'';$('startTime').value=j.startTime||j.jobTime||'';$('endTime').value=j.endTime||'';updateDuration();$('jobId').value=j.id;$('jobTeam').value=j.teamId||'';$('formTitle').textContent=tr('Redigera jobb');show('cancelEdit');view('jobs');$('jobForm').scrollIntoView({behavior:'smooth'})}if(del){const j=jobs.find(x=>x.id===del.dataset.delete);if(j&&confirm((language==='en'?`Delete job for ${j.customer}?`:`Radera jobbet hos ${j.customer}?`))){try{await moveToTrash(tenantId(),'jobs',j.id,j);toast('Jobbet flyttat till papperskorgen (30 dagar)')}catch(err){toast(err.message)}}}if(usr){const u=users.find(x=>x.id===usr.dataset.user);if(!u||!confirm((language==='en'?`Change permissions/status for ${u.name||u.email}?`:`Ändra behörighet/status för ${u.name||u.email}?`)))return;try{if(usr.dataset.status)await updateDoc(doc(companyUsers(tenantId()),u.id),{status:usr.dataset.status});else if(usr.dataset.role)await updateDoc(doc(companyUsers(tenantId()),u.id),{role:usr.dataset.role});toast(tr('Användaren uppdaterad'))}catch(err){toast(tr('Ändringen nekades: ')+err.message)}}});
 $('exportCsv').onclick=()=>{const q=$('search').value.toLowerCase(),d=$('filterDate').value;const invoiceFilter=$('invoiceFilter').value;const rows=jobs.filter(j=>historyTeamMatches(j)&&(invoiceFilter==='all'||(invoiceFilter==='done'?!!j.invoiced:!j.invoiced))&&(!d||j.date===d)&&(!q||[j.customer,j.littra,j.location,j.ownerName,j.notes,j.asphaltType,j.teamName].some(x=>String(x||'').toLowerCase().includes(q))));const columns=['date','startTime','endTime','customer','littra','location','teamName','asphaltType','area','used','waste','ownerName','notes'];const csv=[['Datum','Starttid','Sluttid','Kund','Littra','Arbetsplats','Arbetslag','Asfalttyp','m²','Använt ton','Överblivet ton','Registrerad av','Anteckningar'].map(tr),...rows.map(j=>columns.map(c=>j[c]??''))].map(row=>row.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(';')).join('\r\n');const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='PaveTrack-jobb-'+dateLocal()+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+const tidplan=createTidplan({
+ getContext:()=>({db,uid:me?.uid||'',cid:tenantId()||'',approved:profile?.status==='approved'&&companyApproved,admin:isAdmin(),teams}),
+ firestore:{collection,doc,query,where,onSnapshot,runTransaction,serverTimestamp},esc,fmt,toast,today:dateLocal
+});
 init();
 
 // Platform owner: approve/reject company requests. Only configured UID can write these fields.
@@ -354,7 +359,7 @@ $('billingEnabled').onchange=async e=>{const enabled=e.target.checked;if(!confir
 document.addEventListener('change',async e=>{if(!platformOwner())return;const id=e.target.dataset.companyPlan||e.target.dataset.companyFree;if(!id)return;try{await updateDoc(companyRef(id),e.target.dataset.companyPlan?{plan:e.target.value}:{billingExempt:e.target.checked});toast('Företaget uppdaterat')}catch(err){toast(err.message)}});
 
 function renderTeamSelectors(){for(const id of ['myTeam','jobTeam']){const el=$(id),old=id==='myTeam'?(profile?.teamId||''):el.value;el.innerHTML='<option value="">Inget arbetslag valt</option>'+teams.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');el.value=teams.some(t=>t.id===old)?old:''}if(isAdmin())$('teamsList').innerHTML=teams.map(t=>`<div class="meta">• ${esc(t.name)}</div>`).join('')||'<p>Inga arbetslag ännu.</p>'}
-function listenTeams(){unsubs.push(onSnapshot(companyTeams(tenantId()),s=>{teams=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.name.localeCompare(b.name,'sv'));renderTeamSelectors();renderJobs()},e=>toast('Arbetslag: '+e.message)))}
+function listenTeams(){unsubs.push(onSnapshot(companyTeams(tenantId()),s=>{teams=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.name.localeCompare(b.name,'sv'));renderTeamSelectors();renderJobs();tidplan.refreshTeams()},e=>toast('Arbetslag: '+e.message)))}
 $('myTeam').onchange=async e=>{if(!tenantId())return;const id=e.target.value;try{await updateDoc(doc(companyUsers(tenantId()),me.uid),{teamId:id});profile.teamId=id;$('jobTeam').value=id;toast('Arbetslag sparat')}catch(err){toast('Kunde inte välja arbetslag: '+err.message)}};
 $('inviteEmployee').onclick=async()=>{if(!isAdmin())return;const code=tenantId()==='lxZFcIJuSaPAzN6dgx7hSLo5PW22'?'MALARDALEN':null;if(!code){$('inviteStatus').textContent='Inbjudningskod måste konfigureras för detta företag.';return}try{const ref=inviteRef(code),existing=await getDoc(ref);if(existing.exists()&&existing.data().companyId!==tenantId())throw Error('Koden används redan av ett annat företag.');if(!existing.exists())await setDoc(ref,{companyId:tenantId(),createdBy:me.uid,createdAt:serverTimestamp()});$('inviteStatus').textContent='Inbjudningskod: '+code+' – dela med anställda. De måste godkännas efter registrering.';try{await navigator.clipboard.writeText(code);toast('Inbjudningskoden kopierad')}catch{toast('Inbjudningskoden är '+code)}}catch(err){toast('Kunde inte skapa inbjudan: '+err.message)}};
 $('teamForm').onsubmit=async e=>{e.preventDefault();if(!isAdmin())return;const name=$('newTeamName').value.trim();if(!name||name.length>80)return;try{await addDoc(companyTeams(tenantId()),{name,createdAt:serverTimestamp(),createdBy:me.uid});$('newTeamName').value='';toast('Arbetslaget är tillagt')}catch(err){toast(err.message)}};
