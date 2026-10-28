@@ -1,0 +1,40 @@
+/* Tidplan is scoped to avoid changing existing job cards and reports. */
+#tidplanView,.tp-dialog{--tp-bg:#0e2019;--tp-panel:#142a20;--tp-line:#35533f;--tp-ink:#f0f5ef;--tp-muted:#b5c8b8;--tp-brand:#bfd995;--tp-soft:#253d2a;--tp-warning:#ffbd9c;color:var(--tp-ink)}
+#tidplanView [hidden],.tp-dialog [hidden]{display:none!important}
+#tidplanView .tp-top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+#tidplanView .tp-top h2{margin:0 0 5px}#tidplanView .tp-top p{margin:0;color:var(--tp-muted)}
+#tidplanView .tp-tools{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+#tidplanView .tp-weeknav{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#tidplanView .tp-weeknav>button{min-width:44px;min-height:44px;padding:8px 12px}
+#tidplanView .tp-period{text-align:center;min-width:180px}#tidplanView .tp-period strong{display:block;font-size:18px}#tidplanView .tp-period small{display:block;color:var(--tp-muted);margin-top:2px}
+#tidplanView .tp-filters{display:flex;gap:12px;flex-wrap:wrap}#tidplanView .tp-filters label{display:flex;flex-direction:column;gap:5px;font-size:12px;min-width:150px;margin:0}
+#tidplanView .tp-filters input,#tidplanView .tp-filters select{margin:0;max-width:100%;min-height:42px}
+#tidplanView .tp-options{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;color:var(--tp-muted);font-size:12px;margin:0 0 15px}
+#tidplanView .tp-check{display:flex;align-items:center;gap:8px;margin:0}#tidplanView .tp-check input{width:auto;margin:0}
+#tidplanView .tp-board{border:1px solid var(--tp-line);border-radius:12px;background:var(--tp-panel);overflow:hidden;touch-action:pan-y}
+#tidplanView .tp-columns,#tidplanView .tp-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1.6fr) minmax(0,1.1fr) minmax(0,.85fr) minmax(0,1fr);gap:16px;padding:13px 15px}
+#tidplanView .tp-columns{font-size:12px;color:var(--tp-muted)}
+#tidplanView .tp-dayhead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 15px;background:var(--tp-soft);border-block:1px solid var(--tp-line)}
+#tidplanView .tp-dayhead h3{margin:0;font-size:14px;text-transform:capitalize}#tidplanView .tp-dayhead>div{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--tp-muted)}
+#tidplanView .tp-add-day{background:none;border:0;color:var(--tp-brand);padding:6px;min-height:32px;white-space:nowrap;font-size:12px}
+#tidplanView .tp-today{font-size:11px;font-weight:500;text-transform:none;margin-left:8px;color:var(--tp-brand)}
+#tidplanView .tp-row{border-bottom:1px solid var(--tp-line);font-size:13px;align-items:start}
+#tidplanView .tp-row:last-child{border-bottom:0}#tidplanView .tp-row>div{min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}
+#tidplanView .tp-job-link{background:none;border:0;color:var(--tp-ink);font-size:14px;font-weight:650;padding:0;text-align:left;line-height:1.5;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere;max-width:100%}
+#tidplanView .tp-sub{display:block;color:var(--tp-muted);font-size:12px;margin-top:4px}
+#tidplanView .tp-mobile-label{display:none}#tidplanView .tp-important,.tp-dialog .tp-important{display:block;color:var(--tp-warning)}
+#tidplanView .tp-status{display:inline-block;font-size:11px;font-weight:600;margin-top:8px;padding:2px 6px;background:var(--tp-soft);border-radius:4px}
+#tidplanView .tp-status-ongoing{border-left:3px solid var(--tp-brand)}#tidplanView .tp-status-completed{color:var(--tp-muted)}
+#tidplanView .tp-archived{opacity:.7}#tidplanView .tp-empty{margin:0;padding:17px 15px;color:var(--tp-muted);font-size:13px}
+#tidplanView .tp-footer{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--tp-muted);margin-top:12px}
+#tidplanView #tpMessage{font-size:13px;min-height:1em;margin:6px 0}#tidplanView .tp-error,.tp-dialog .tp-error{color:var(--tp-warning);white-space:pre-wrap}
+#tidplanView .tp-phone,.tp-dialog .tp-phone{display:block;color:var(--tp-brand);margin-top:5px;overflow-wrap:anywhere}
+.tp-dialog{background:var(--tp-bg);border:1px solid var(--tp-line);border-radius:14px;width:min(760px,calc(100% - 24px));max-height:calc(100dvh - 28px);padding:22px;margin:auto;overflow:auto;box-sizing:border-box;color-scheme:dark}
+.tp-dialog::backdrop{background:rgba(0,0,0,.7)}.tp-dialog *{box-sizing:border-box}.tp-dialog h2{margin:0 0 16px}.tp-dialog h3{margin:20px 0 8px;font-size:15px}
+.tp-dialog .tp-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}.tp-dialog label{display:flex;flex-direction:column;gap:6px;margin:0;font-size:13px;min-width:0}
+.tp-dialog input,.tp-dialog select,.tp-dialog textarea{width:100%;max-width:100%;background:var(--tp-panel);border:1px solid var(--tp-line);border-radius:8px;padding:11px;color:var(--tp-ink);font:inherit;margin:0;min-height:44px}
+.tp-dialog textarea{resize:vertical}.tp-dialog .tp-full{grid-column:1/-1}.tp-dialog .tp-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px}.tp-dialog .tp-actions button{min-height:44px}
+.tp-dialog .tp-facts{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:0}.tp-dialog .tp-facts>div{min-width:0}.tp-dialog dt{font-size:12px;color:var(--tp-muted)}.tp-dialog dd{margin:4px 0 0;overflow-wrap:anywhere}.tp-dialog .tp-pre{white-space:pre-wrap;overflow-wrap:anywhere}
+#tidplanView button:focus-visible,.tp-dialog button:focus-visible{outline:2px solid var(--tp-brand);outline-offset:3px}
+@media(max-width:720px){#tidplanView .tp-columns{display:none}#tidplanView .tp-row{grid-template-columns:1fr 1fr;gap:13px 16px;padding:16px}#tidplanView .tp-name-cell,#tidplanView .tp-work,#tidplanView .tp-instruction{grid-column:1/-1}#tidplanView .tp-no-instructions{display:none}#tidplanView .tp-mobile-label{display:block;color:var(--tp-muted);font-size:11px;margin-bottom:4px}#tidplanView .tp-job-link{font-size:16px;min-height:32px}#tidplanView .tp-row .tp-sub{font-size:13px}#tidplanView .tp-weeknav{width:100%;justify-content:space-between}#tidplanView .tp-period{min-width:0;flex:1}#tidplanView .tp-filters{width:100%}#tidplanView .tp-filters label{flex:1;min-width:125px}#tidplanView .tp-filters input,#tidplanView .tp-filters select{font-size:16px}#tidplanView .tp-add-day{min-height:44px}.tp-dialog .tp-form-grid{grid-template-columns:1fr}.tp-dialog .tp-full{grid-column:auto}.tp-dialog input,.tp-dialog select,.tp-dialog textarea{font-size:16px}.tp-dialog{padding:18px}.tp-dialog .tp-facts{gap:14px 12px;font-size:13px}#tidplanView .tp-weeknav #tpThisWeek{width:100%}}
+@media(prefers-reduced-motion:reduce){.tp-dialog{scroll-behavior:auto}}
