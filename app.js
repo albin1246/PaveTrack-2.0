@@ -511,6 +511,7 @@ function egenDocument(r){
  th,td{border:1px solid #94a49a;padding:3px 4px;text-align:left;vertical-align:middle;overflow-wrap:anywhere}
  th{background:#e4ebee;font-size:8px;font-weight:bold;height:7mm}
  td{height:6.5mm;font-size:8px}
+ .weather td,.work td{font-size:10px}
  tr{break-inside:avoid;page-break-inside:avoid}thead{display:table-header-group}
  .weather th:nth-child(1){width:19%}.weather th:nth-child(2){width:26%}.weather th:nth-child(3),.weather th:nth-child(4){width:27.5%}
  .work th:nth-child(1){width:15%}.work th:nth-child(2){width:15%}.work th:nth-child(3){width:14%}.work th:nth-child(4){width:20%}.work th:nth-child(5){width:12%}.work th:nth-child(6){width:11%}.work th:nth-child(7){width:13%}
