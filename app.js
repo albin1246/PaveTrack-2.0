@@ -398,8 +398,54 @@ function egenSignatureEnd(e){
 egenSignatureCanvas.addEventListener('pointerup',egenSignatureEnd);
 egenSignatureCanvas.addEventListener('pointercancel',egenSignatureEnd);
 $('egenClearSignature').onclick=()=>egenSignatureLoad();
-function egenData(){const f=$('egenForm');const data=Object.fromEntries([...f.querySelectorAll('[name]')].map(el=>[el.name,el.type==='checkbox'?el.checked:el.value]));data.weather=egenRows('egenWeatherRows');data.work=egenRows('egenWorkRows');data.logo=egenLogoChoice==='custom'?egenLogoData:'';data.logoChoice=egenLogoChoice;data.useLogo=$('egenUseLogo').checked;data.signature=egenSignatureData;return data}
-function egenFill(data={}){const f=$('egenForm');f.reset();egenSignatureLoad(data.signature||'');egenLogoData=data.logo||'';
+// Photo attachments are compressed and saved with the report payload.
+let egenPhotos=[],egenPhotosBusy=false,egenPhotosGeneration=0;
+const egenPhotoValid=p=>p&&typeof p.data==='string'&&/^data:image\/jpeg;base64,[a-zA-Z0-9+/=]+$/.test(p.data);
+function egenRenderPhotos(){
+ const list=$('egenPhotoList');if(!list)return;
+ list.innerHTML=egenPhotos.map((p,i)=>`<figure style="margin:0;border:1px solid #9bab9f;border-radius:8px;padding:8px"><img src="${p.data}" alt="Bild ${i+1}" style="display:block;width:100%;height:150px;object-fit:contain;background:#fff"><figcaption style="overflow-wrap:anywhere;margin-top:6px">Bild ${i+1}: ${esc(p.name||'Foto')}</figcaption><button type="button" class="smallbtn ghost" data-egen-photo-remove="${i}" aria-label="Ta bort bild ${i+1}">Ta bort bild</button></figure>`).join('');
+ $('egenPhotoStatus').textContent=egenPhotosBusy?'Bearbetar bilder…':`${egenPhotos.length} ${egenPhotos.length===1?'bild':'bilder'} bifogade`;
+ $('egenAddPhotos').disabled=egenPhotosBusy;
+}
+function egenSetupPhotos(){
+ const field=$('egenForm').querySelector('[name="deviations"]');if(!field)return;
+ const panel=document.createElement('div');panel.style.cssText='grid-column:1 / -1;margin:12px 0';
+ panel.innerHTML='<button type="button" class="smallbtn secondary" id="egenAddPhotos">Lägg till Bilder</button><input type="file" id="egenPhotoInput" accept="image/*" multiple hidden><p class="meta" id="egenPhotoStatus" aria-live="polite"></p><p class="meta">Bilderna komprimeras och sparas med egenkontrollen. En bild per PDF-sida, efter formuläret. Om rapporten blir för stor behöver du ta bort någon bild.</p><div id="egenPhotoList" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px"></div>';
+ (field.closest('label')||field).after(panel);
+ $('egenAddPhotos').onclick=()=>$('egenPhotoInput').click();
+ $('egenPhotoInput').onchange=async e=>{
+  const files=Array.from(e.target.files||[]);e.target.value='';if(!files.length||egenPhotosBusy)return;
+  const generation=egenPhotosGeneration;egenPhotosBusy=true;egenRenderPhotos();
+  try{for(const file of files){
+   if(generation!==egenPhotosGeneration)break;
+   try{
+    const photo=await egenPreparePhoto(file);if(generation!==egenPhotosGeneration)break;
+    const candidate={...egenData(),photos:[...egenPhotos,photo]};
+    if(new Blob([JSON.stringify(candidate)]).size>760000){toast('Rapportens bildutrymme är fullt. Ta bort någon bild innan du lägger till fler.');break}
+    egenPhotos.push(photo);egenRenderPhotos();
+   }catch(err){toast('Kunde inte lägga till '+file.name+': '+err.message)}
+  }}finally{egenPhotosBusy=false;egenRenderPhotos()}
+ };
+ panel.addEventListener('click',e=>{const button=e.target.closest('[data-egen-photo-remove]');if(button){egenPhotos.splice(Number(button.dataset.egenPhotoRemove),1);egenRenderPhotos()}});
+ egenRenderPhotos();
+}
+async function egenPreparePhoto(file){
+ if(file.size>30*1024*1024)throw new Error('Bilden får vara högst 30 MB.');
+ const url=URL.createObjectURL(file),img=new Image();
+ try{
+  await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('Bildformatet kan inte läsas. Välj JPEG eller PNG.'));img.src=url});
+  const canvas=document.createElement('canvas');let maxSide=1400,data='';
+  for(let attempt=0;attempt<5;attempt++){
+   const scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
+   canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+   const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
+   data=canvas.toDataURL('image/jpeg',0.75-attempt*0.07);if(data.length<=130000)break;maxSide=Math.round(maxSide*0.8);
+  }
+  return {name:file.name.slice(0,120),data};
+ }finally{URL.revokeObjectURL(url)}
+}
+function egenData(){const f=$('egenForm');const data=Object.fromEntries([...f.querySelectorAll('[name]')].map(el=>[el.name,el.type==='checkbox'?el.checked:el.value]));data.weather=egenRows('egenWeatherRows');data.work=egenRows('egenWorkRows');data.logo=egenLogoChoice==='custom'?egenLogoData:'';data.logoChoice=egenLogoChoice;data.useLogo=$('egenUseLogo').checked;data.signature=egenSignatureData;data.photos=egenPhotos.map(p=>({...p}));return data}
+function egenFill(data={}){egenPhotosGeneration++;egenPhotos=(data.photos||[]).filter(egenPhotoValid).map(p=>({...p}));egenRenderPhotos();const f=$('egenForm');f.reset();egenSignatureLoad(data.signature||'');egenLogoData=data.logo||'';
 egenLogoChoice=data.logoChoice||(egenLogoData?'custom':Object.keys(data).length? 'none':egenDefaultLogoChoice());
 $('egenUseLogo').checked=data.useLogo!==false;egenUpdateLogo();for(const el of f.querySelectorAll('[name]'))if(el.name in data){if(el.type==='checkbox')el.checked=!!data[el.name];else el.value=data[el.name]??''} $('egenWeatherRows').innerHTML='';$('egenWorkRows').innerHTML='';(data.weather?.length?data.weather:Array.from({length:3},()=>({}))).forEach(r=>egenAddRow('weather',r));(data.work?.length?data.work:Array.from({length:3},()=>({}))).forEach(r=>egenAddRow('work',r))}
 function egenCurrent(){return {id:egenActiveId||crypto.randomUUID(),...egenData(),updatedAt:new Date().toISOString(),ownerName:profile?.name||me?.email||'',companyName:tenantId()==='lxZFcIJuSaPAzN6dgx7hSLo5PW22'?'Mälardalens Asfalt':'PaveTrack'}}
@@ -416,6 +462,7 @@ function egenStartCloud(){
  },err=>{$('egenStatus').textContent='Kunde inte hämta egenkontroller från Firebase: '+err.message;toast('Egenkontroll: '+err.message)}));
 }
 async function egenStore(){
+ if(egenPhotosBusy){toast('Vänta tills bilderna har bearbetats.');return null}
  if(!egenAllowed()){toast('Endast admin och superadmin kan spara egenkontroller.');return null}
  const r=egenCurrent(),previous=egenCloudRecords.find(x=>x.id===r.id);
  if(previous&&previous.ownerUid!==me.uid&&!isAdmin()){toast('Du får inte ändra denna egenkontroll.');return null}
@@ -528,18 +575,18 @@ async function egenCreatePdf(r){
   const pdf=new jspdf.jsPDF({unit:'mm',format:'a4',orientation:'portrait',compress:true});
   const pageW=192,pageH=279,scale=pageW/canvas.width;
   const naturalH=canvas.height*scale;
-  // A nearly A4-sized report is reduced slightly to fit one page.
-  if(naturalH<=pageH*1.4){
-   const fit=Math.min(1,pageH/naturalH);
-   pdf.addImage(canvas.toDataURL('image/jpeg',0.96),'JPEG',9,9,pageW*fit,naturalH*fit);
-  }else{
-   const slicePx=Math.floor(pageH/scale);
-   for(let top=0,page=0;top<canvas.height;top+=slicePx,page++){
-    if(page)pdf.addPage();
-    const slice=document.createElement('canvas');slice.width=canvas.width;slice.height=Math.min(slicePx,canvas.height-top);
-    slice.getContext('2d').drawImage(canvas,0,top,canvas.width,slice.height,0,0,canvas.width,slice.height);
-    pdf.addImage(slice.toDataURL('image/jpeg',0.96),'JPEG',9,9,pageW,slice.height*scale);
-   }
+  // The form always occupies page one. Attachments start on page two.
+  const fit=Math.min(1,pageH/naturalH);
+  pdf.addImage(canvas.toDataURL('image/jpeg',0.96),'JPEG',9,9,pageW*fit,naturalH*fit);
+  const photos=(r.photos||[]).filter(egenPhotoValid);
+  for(let i=0;i<photos.length;i++){
+   const photo=photos[i],image=new Image();
+   await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(new Error('Bild '+(i+1)+' kunde inte läsas.'));image.src=photo.data});
+   pdf.addPage();pdf.setFontSize(12);pdf.text('Bild '+(i+1),9,15);
+   const imageScale=Math.min(192/image.naturalWidth,258/image.naturalHeight);
+   const imageW=image.naturalWidth*imageScale,imageH=image.naturalHeight*imageScale;
+   pdf.addImage(photo.data,'JPEG',9+(192-imageW)/2,23+(258-imageH)/2,imageW,imageH);
+   pdf.setFontSize(8);pdf.text('PaveTrack - '+(i+2)+' / '+(photos.length+1),9,289);
   }
   const blob=pdf.output('blob');
   if(blob.type!=='application/pdf'||blob.size<100)throw new Error('PDF-filen kunde inte skapas.');
@@ -554,6 +601,7 @@ function egenPdfLoading(visible,label='Skapar PDF…'){
  overlay.setAttribute('aria-hidden',String(!visible));
 }
 async function egenPdfAction(r,action){
+ if(egenPhotosBusy){toast('Vänta tills bilderna har bearbetats.');return}
  if(egenPdfBusy){toast('PDF skapas redan. Vänta en stund.');return}
  egenPdfBusy=true;
  const ios=egenIsIOS();
@@ -607,4 +655,4 @@ $('egenNew').onclick=()=>{egenActiveId=null;egenFill();$('egenStatus').textConte
 $('egenPrint').onclick=()=>egenPrint(egenCurrent());$('egenDownload').onclick=()=>egenDownload(egenCurrent());
 $('egenSavedList').addEventListener('click',async e=>{const b=e.target.closest('[data-egen-open],[data-egen-print],[data-egen-download],[data-egen-delete]');if(!b)return;const id=b.dataset.egenOpen||b.dataset.egenPrint||b.dataset.egenDownload||b.dataset.egenDelete,r=egenCloudRecords.find(x=>x.id===id);if(!r||!egenAllowed())return;if(b.dataset.egenOpen){egenActiveId=id;egenFill(r);$('egenForm').scrollIntoView({behavior:'smooth'})}else if(b.dataset.egenPrint)egenPrint(r);else if(b.dataset.egenDownload)egenDownload(r);else if(b.dataset.egenDelete&&confirm('Radera denna egenkontroll från Firebase?')){try{await moveToTrash(tenantId(),'egenkontroller',id,r);if(egenActiveId===id){egenActiveId=null;egenFill()}toast('Egenkontrollen flyttad till papperskorgen (30 dagar)')}catch(err){toast('Kunde inte radera: '+err.message)}}});
 try{localStorage.removeItem(egenKey())}catch(e){console.warn('Kunde inte rensa äldre lokala egenkontroller',e)}
-egenFill();egenRenderList();
+egenSetupPhotos();egenFill();egenRenderList();
